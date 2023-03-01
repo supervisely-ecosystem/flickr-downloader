@@ -8,5 +8,4 @@ import src.ui.output as output
 
 layout = Container(widgets=[input.container, settings.card, output.card])
 
-
 app = sly.Application(layout=layout)

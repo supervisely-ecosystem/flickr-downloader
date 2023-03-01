@@ -20,7 +20,9 @@ load_dotenv("flickr.env")
 FLICKR_API_KEY = os.environ["FLICKR_API_KEY"]
 FLICKR_API_SECRET = os.environ["FLICKR_API_SECRET"]
 
+LICENSE_TYPE = 4
 IMAGES_PER_PAGE = 500
+REQUIRED_METADATA_KEYS = ["owner"]
 OPTIONAL_METADATA_KEYS = ["title", "description"]
 
 flickr_api.set_keys(FLICKR_API_KEY, FLICKR_API_SECRET)

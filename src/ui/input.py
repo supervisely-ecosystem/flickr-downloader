@@ -15,7 +15,5 @@ images_number_card = Card(
     content=images_number_input,
 )
 container = Container(
-    widgets=[search_query_card, images_number_card],
-    direction="horizontal",
-    fractions=[1, 1],
+    widgets=[search_query_card, images_number_card], direction="vertical"
 )
