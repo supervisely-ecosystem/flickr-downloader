@@ -1,8 +1,9 @@
 import os
 
 from math import ceil
-from time import sleep
+from time import sleep, perf_counter
 
+import supervisely as sly
 from supervisely.app.widgets import (
     Container,
     Button,
@@ -41,118 +42,140 @@ output_container = Container(
 )
 card = Card(
     "Choose destination",
-    "Select destination for downloading images. If not filled the names will be generated automatically.",
+    "Select the destination for downloading images. If not filled the names will be generated automatically. ",
     content=output_container,
 )
 
 
 def images_from_flicker(
-    search_query: str, images_number: int, license_type: int
-) -> list[g.flickr_api.objects.Photo]:
-    """_summary_
+    search_query: str, images_number: int, license_type: int, metadata: list[str]
+) -> tuple[list[str], list[str], list[dict[str, str]]]:
+    """Searches for specified number of images on Flickr using the specified search query
+    and returns the list of image names, links and metadata with specified fields.
 
     Args:
-        search_query (str): query for searcging images on Flickr
+        search_query (str): search query for images
         images_number (int): number of images to search
-        license_type (int): type of the license for images
+        license_type (int): license type for images (4 for Creative Commons Attribution-NonCommercial)
+        metadata (list[str]): list of metadata fields to add for images
 
     Returns:
-        list[g.flickr_api.objects.Photo]: list of Photo objects
+        tuple[list[str], list[str], list[dict[str, str]]]: returns the list of image names,
+        links and metadata for using in the upload_links() function
     """
     # Calculate the number of pages to search depending on the number of images.
     page_count = ceil(images_number / g.IMAGES_PER_PAGE)
     # Calculate the number of images on the last page.
     last_page_images_count = images_number % g.IMAGES_PER_PAGE
     # Create a dictionary with the number of images to search on each page.
-    pages = {i: g.IMAGES_PER_PAGE for i in range(1, page_count)}
-    pages[page_count] = last_page_images_count
+    pages = {i: g.IMAGES_PER_PAGE for i in range(1, page_count + 1)}
+    if last_page_images_count:
+        pages[page_count] = last_page_images_count
 
-    images = []
+    names = []
+    links = []
+    metas = []
     for page_number, images_per_page in pages.items():
-        # Add images from the current page to the result list.
-        images += g.flickr_api.Photo.search(
+        # Get the list of images on the current page.
+        # Test time of API response, delete in production.
+        init_call_time = perf_counter()
+        images_on_page = g.flickr_api.Photo.search(
             tags=search_query,
             per_page=images_per_page,
             license=license_type,
             page=page_number,
+            extras=",".join(metadata),
         )
+        # Test time of API response, delete in production.
+        end_call_time = perf_counter()
+        print(f"Time of API response: {end_call_time - init_call_time}")
+        # Iterate over the list of images on the current page.
+        for image in images_on_page:
+            image_as_dict = image.__dict__
+            link = image_as_dict.get("url_o")
+            if not link or not link.endswith(".jpg") or link in links:
+                continue
+            name = os.path.basename(link)
+            names.append(name)
+            links.append(link)
+            metas.append(get_image_metadata(image_as_dict, metadata))
 
-    return images
+    # Debug code to check if the lists contain duplicates and have the same length.
+    # Delete in production.
+    print("Names not contain duplicates: ", len(names) == len(set(names)))
+    print("Links not contain duplicates: ", len(links) == len(set(links)))
+    print("All objects have similar length: ", len(names) == len(links) == len(metas))
+
+    return names, links, metas
 
 
 def upload_images_to_dataset(
-    dataset_id: int, images: list[g.flickr_api.objects.Photo], metadata: list[str]
+    dataset_id: int, names: list[str], links: list[str], metas: list[dict[str, str]]
 ) -> int:
-    """Uploads images to the specified dataset from the list of Photo objects.
+    """Adds images to the specified dataset using the list of names, links and metadata in batches.
 
     Args:
-        dataset_id (int): the id of the dataset to upload images to
-        images (list[g.flickr_api.objects.Photo]): list of Photo objects
-        metadata (list[str]): list of metadata fields to add to images
+        dataset_id (int): the ID of the dataset to add images to
+        names (list[str]): list with images filenames
+        links (list[str]): list with images links
+        metas (list[dict[str, str]]): list with images metadata
 
     Returns:
-        int: number of uploaded images
+        int: the number of uploaded images
     """
-    # Change the text on the download button and show the progress bar.
-    download_button.text = "Downloading..."
     progress.show()
 
     with progress(
-        message="Downloading images from Flickr...", total=len(images)
+        message="Downloading images from Flickr...", total=len(names)
     ) as pbar:
-        for image in images:
-            # Check if the cancel button was clicked.
+        # Batch the lists of names, links and metadata.
+        for batch_names, batch_links, batch_metas in zip(
+            sly.batched(names, batch_size=g.BATCH_SIZE),
+            sly.batched(links, batch_size=g.BATCH_SIZE),
+            sly.batched(metas, batch_size=g.BATCH_SIZE),
+        ):
+            # Check if the user hasn't pressed the cancel button.
             if continue_downloading:
-                # Get the URL of the original image and its filename.
-                image_url = image.sizes["Original"]["source"]
-                image_filename = os.path.basename(image_url)
-
-                # Get the metadata of the image with the specified fields.
-                image_metadata = get_image_metadata(image, metadata)
-
-                # Upload the image to the dataset.
-                g.api.image.upload_link(
-                    dataset_id, image_filename, image_url, meta=image_metadata
+                # Change the text on the download button and show the progress bar.
+                download_button.text = "Downloading..."
+                uploaded_images = g.api.image.upload_links(
+                    dataset_id, batch_names, batch_links, metas=batch_metas
                 )
-                pbar.update(1)
+                pbar.update(g.BATCH_SIZE)
 
-    return pbar.n
+    return len(uploaded_images)
 
 
 def get_image_metadata(
-    image: g.flickr_api.objects.Photo, metadata: list[str]
+    image_as_dict: dict[str, str], metadata: list[str]
 ) -> dict[str, str]:
-    """Reads the metadata of the image for specified fields and returns it in a dictionary.
+    """Returns the dictionary with the specified metadata fields for the image.
 
     Args:
-        image (g.flickr_api.objects.Photo): Photo object to get metadata from
-        metadata (list[str]): list of metadata fields to get
+        image_as_dict (dict[str, str]): dictionary which containts image attributes
+        metadata (list[str]): list of metadata fields to add for images
 
     Returns:
-        dict[str, str]: dictionary with metadata fields and their values
+        dict[str, str]: dictionary with the specified metadata fields for the
+        image to use with upload_links() function
     """
-    # Get the metadata of the image.
-    photo_data = image.getInfo()
 
     image_metadata = {}
-    for key in metadata:
-        # Check if the field is in the metadata of the image.
-        if key in photo_data:
-            # As long as the field owner is a dictionary, we need to get the id and username from it.
-            if key == "owner":
-                # Unpack the dictionary with the owner data.
-                owner_data = photo_data[key]
-                image_metadata["owner_id"] = owner_data.id
-                image_metadata["owner_username"] = owner_data.username
-            else:
-                image_metadata[key] = photo_data[key]
 
+    for key in metadata:
+        if key == "owner":
+            owner = image_as_dict.get(key).__dict__
+            image_metadata["Owner id"] = owner.get("id")
+        else:
+            image_metadata[key.title()] = image_as_dict.get(key)
     return image_metadata
 
 
 @download_button.click
 def flickr_to_supervisely():
     """Reads the data from the input fields and starts downloading images from Flickr."""
+    # Test time of the whole function, delete in production.
+    start_time = perf_counter()
     # Show the cancel button and change the text on the download button.
     cancel_button.show()
     download_button.text = "Searching..."
@@ -179,9 +202,8 @@ def flickr_to_supervisely():
             if settings.checkboxes[key].is_checked()
         ]
     )
-
     # Getting the search results from Flickr.
-    images = images_from_flicker(search_query, images_number, license_type)
+    images = images_from_flicker(search_query, images_number, license_type, metadata)
 
     # Check if there are any images found for the query.
     if not images:
@@ -199,11 +221,21 @@ def flickr_to_supervisely():
         # If there are images, get the project and dataset ids.
         project_id, dataset_id = get_project_and_dataset_ids()
 
+        # Get the lists of names, links and metadata for the search results.
+        names, links, metas = images
+        # Test time of the upload function, delete in production.
+        before_upload_time = perf_counter()
+        print(f"Time before upload: {before_upload_time - start_time} seconds")
         # Upload the images to the dataset and get the number of uploaded images.
-        uploaded_images_number = upload_images_to_dataset(dataset_id, images, metadata)
+        uploaded_images_number = upload_images_to_dataset(
+            dataset_id, names, links, metas
+        )
 
         cancel_button.hide()
         download_button.text = "Finishing..."
+
+        end_time = perf_counter()
+        print(f"Time: {end_time - start_time} seconds")
 
         show_result_message(uploaded_images_number)
 
@@ -304,4 +336,5 @@ def cancel_downloading():
     and hides the cancel button."""
     global continue_downloading
     continue_downloading = False
+    download_button.text = "Stopping..."
     cancel_button.hide()
