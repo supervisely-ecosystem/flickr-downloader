@@ -72,15 +72,25 @@ def images_from_flicker(
     if last_page_images_count:
         pages[page_count] = last_page_images_count
 
+    # Debug variable to count the number of filtered images. Delete in production.
+    filtered_images = 0
+
     names = []
     links = []
     metas = []
+    # Debug timer, delete in production.
+    global full_flickr_search_time
+    full_flickr_search_time = 0
+
     for page_number, images_per_page in pages.items():
         # Get the list of images on the current page.
         # Test time of API response, delete in production.
         init_call_time = perf_counter()
         images_on_page = g.flickr_api.Photo.search(
-            tags=search_query,
+            text=search_query,
+            sort="relevance",
+            content_type=1,
+            media="photos",
             per_page=images_per_page,
             license=license_type,
             page=page_number,
@@ -88,12 +98,22 @@ def images_from_flicker(
         )
         # Test time of API response, delete in production.
         end_call_time = perf_counter()
-        print(f"Time of API response: {end_call_time - init_call_time}")
+        flickr_search_time = end_call_time - init_call_time
+        full_flickr_search_time += flickr_search_time
+
+        sly.logger.debug(
+            f"Time of Flickr API response: {flickr_search_time} for {images_per_page} images."
+        )
         # Iterate over the list of images on the current page.
         for image in images_on_page:
             image_as_dict = image.__dict__
             link = image_as_dict.get("url_o")
             if not link or not link.endswith(".jpg") or link in links:
+                filtered_images += 1
+                sly.logger.warning(
+                    f"Image with id {image_as_dict.get('id')} is skipped due "
+                    f"to no link, wrong extension or as duplicate."
+                )
                 continue
             name = os.path.basename(link)
             names.append(name)
@@ -102,10 +122,23 @@ def images_from_flicker(
 
     # Debug code to check if the lists contain duplicates and have the same length.
     # Delete in production.
-    print("Names not contain duplicates: ", len(names) == len(set(names)))
-    print("Links not contain duplicates: ", len(links) == len(set(links)))
-    print("All objects have similar length: ", len(names) == len(links) == len(metas))
-
+    sly.logger.debug(
+        f"Flickr API returned {len(names) +  filtered_images} images for "
+        f"search query with {images_number} images number."
+    )
+    sly.logger.debug(f"Full Flickr API search time: {full_flickr_search_time}")
+    sly.logger.debug(
+        f"Names list doesn't contain duplicates: {len(names) == len(set(names))}"
+    )
+    sly.logger.debug(
+        f"Links list doesn't contain duplicates: {len(links) == len(set(links))}"
+    )
+    sly.logger.debug(
+        f"All objects have similar length: {len(names) == len(links) == len(metas)}"
+    )
+    sly.logger.debug(
+        f"Total number of filtered results: {len(names)}. {filtered_images} was filtered as bad results."
+    )
     return names, links, metas
 
 
@@ -123,7 +156,13 @@ def upload_images_to_dataset(
     Returns:
         int: the number of uploaded images
     """
+
+    sly.logger.debug(
+        f"Starting to upload images to dataset {dataset_id}. Number of images: {len(names)}"
+    )
+
     progress.show()
+    uploaded_images_number = 0
 
     with progress(
         message="Downloading images from Flickr...", total=len(names)
@@ -142,8 +181,9 @@ def upload_images_to_dataset(
                     dataset_id, batch_names, batch_links, metas=batch_metas
                 )
                 pbar.update(g.BATCH_SIZE)
+                uploaded_images_number += len(uploaded_images)
 
-    return len(uploaded_images)
+    return uploaded_images_number
 
 
 def get_image_metadata(
@@ -160,7 +200,9 @@ def get_image_metadata(
         image to use with upload_links() function
     """
 
-    image_metadata = {}
+    image_metadata = {
+        "License type": license_text,
+    }
 
     for key in metadata:
         if key == "owner":
@@ -189,9 +231,11 @@ def flickr_to_supervisely():
     search_query = input.search_query_input.get_value()
 
     images_number = input.images_number_input.get_value()
+    license_type = settings.select_license.get_value()
+    global license_text
+    license_text = g.LICENSE_TYPES_BY_NUMBER[license_type]
 
-    # Reading global constants for the license type and metadata.
-    license_type = g.LICENSE_TYPE
+    # Reading global constant for required metadata fields.
     metadata = g.REQUIRED_METADATA_KEYS
 
     # Add the metadata fields selected by the user to the list of metadata.
@@ -202,11 +246,18 @@ def flickr_to_supervisely():
             if settings.checkboxes[key].is_checked()
         ]
     )
-    # Getting the search results from Flickr.
-    images = images_from_flicker(search_query, images_number, license_type, metadata)
+    sly.logger.debug(
+        f"Started with the following parameters: Search query: {search_query}; "
+        f"Images number: {images_number}; License type: {license_type}; Metadata: {metadata};"
+    )
+
+    # Get the lists of names, links and metadata for the search results.
+    names, links, metas = images_from_flicker(
+        search_query, images_number, license_type, metadata
+    )
 
     # Check if there are any images found for the query.
-    if not images:
+    if not (names and links and metas):
         # If there are no images, show the error message and hide the cancel button.
         error_message.text = "No images found for this query."
 
@@ -221,11 +272,13 @@ def flickr_to_supervisely():
         # If there are images, get the project and dataset ids.
         project_id, dataset_id = get_project_and_dataset_ids()
 
-        # Get the lists of names, links and metadata for the search results.
-        names, links, metas = images
         # Test time of the upload function, delete in production.
         before_upload_time = perf_counter()
-        print(f"Time before upload: {before_upload_time - start_time} seconds")
+        search_and_prepare_time = before_upload_time - start_time
+        sly.logger.debug(
+            f"Search and prepare time: {search_and_prepare_time} seconds. Time "
+            f"excluding API requests: {search_and_prepare_time - full_flickr_search_time} seconds."
+        )
         # Upload the images to the dataset and get the number of uploaded images.
         uploaded_images_number = upload_images_to_dataset(
             dataset_id, names, links, metas
@@ -301,6 +354,7 @@ def create_project(project_name: str | None) -> int:
     """
     # If the name is not specified, use the search query as the name.
     if not project_name:
+        sly.logger.debug("Project name is not specified, using search query.")
         project_name = f"Flickr images: {search_query}"
 
     project = g.api.project.create(
@@ -322,6 +376,7 @@ def create_dataset(project_id: int, dataset_name: str | None) -> int:
     """
     # If the name is not specified, use the search query as the name.
     if not dataset_name:
+        sly.logger.debug("Dataset name is not specified, using search query.")
         dataset_name = f"Flickr images: {search_query}"
 
     dataset = g.api.dataset.create(
@@ -333,7 +388,7 @@ def create_dataset(project_id: int, dataset_name: str | None) -> int:
 @cancel_button.click
 def cancel_downloading():
     """Changes the global variable of continue_downloading to False to stop downloading images,
-    and hides the cancel button."""
+    hides the cancel button and changes the text on download button."""
     global continue_downloading
     continue_downloading = False
     download_button.text = "Stopping..."
