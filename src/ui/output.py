@@ -2,7 +2,6 @@ import os
 import requests
 
 from shutil import rmtree
-from math import ceil
 from time import sleep, perf_counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple, Optional
@@ -48,7 +47,11 @@ card = Card(
 
 
 def images_from_flicker(
-    search_query: str, images_number: int, license_type: int, metadata: List[str]
+    search_query: str,
+    images_number: int,
+    license_type: int,
+    metadata: List[str],
+    start_number: int,
 ) -> Tuple[List[str], List[str], List[Dict[str, str]]]:
     """Searches for specified number of images on Flickr using the specified search query
     and returns the list of image names, links and metadata with specified fields.
@@ -58,22 +61,39 @@ def images_from_flicker(
         images_number (int): number of images to search
         license_type (int): license type for images (4 for Creative Commons Attribution-NonCommercial)
         metadata (List[str]): list of metadata fields to add for images
+        start_number (int): number of images to skip from the beginning of the search
 
     Returns:
         tuple[List[str], List[str], List[Dict[str, str]]]: returns the list of image names,
         links and metadata for using in the upload_links() function
     """
-    # Calculate the number of pages to search depending on the number of images.
-    page_count = ceil(images_number / g.IMAGES_PER_PAGE)
-    # Calculate the number of images on the last page.
-    last_page_images_count = images_number % g.IMAGES_PER_PAGE
-    # Create a dictionary with the number of images to search on each page.
-    pages = {i: g.IMAGES_PER_PAGE for i in range(1, page_count + 1)}
-    if last_page_images_count:
-        pages[page_count] = last_page_images_count
+    # Calculate the number of pages and images on the last page according to
+    # the number of images to search and start number.
+    total_images_number = images_number + start_number
+    start_page_number = start_number // g.IMAGES_PER_PAGE + 1
+    start_offset_number = start_number % g.IMAGES_PER_PAGE
 
-    # Debug variable to count the number of filtered images. Delete in production.
+    # Create a dictionary with the number of images per page.
+    full_pages_number = total_images_number // g.IMAGES_PER_PAGE
+    pages = {i: g.IMAGES_PER_PAGE for i in range(1, full_pages_number + 1)}
+    last_page_images_number = total_images_number % g.IMAGES_PER_PAGE
+    if last_page_images_number:
+        pages[full_pages_number + 1] = last_page_images_number
+
+    sly.logger.debug(
+        f"Paging: {pages}, start page: {start_page_number}, start offset: {start_offset_number}."
+    )
+    #
+    global dataset_id
+    if dataset_id:
+        sly.logger.debug(f"Dataset ID is not None: {dataset_id}.")
+        existing_names = [image.name for image in g.api.image.get_list(dataset_id)]
+        sly.logger.debug(f"Read {len(existing_names)} existing names from the dataset.")
+        sly.logger.debug(f"Examples: {existing_names[:5]}")
+
+    # Debug variables to count the number of filtered images and duplicates. Delete in production.
     filtered_images = 0
+    existed_duplicates = 0
 
     global_names = []
     global_links = []
@@ -83,8 +103,16 @@ def images_from_flicker(
     full_flickr_search_time = 0
 
     for page_number, images_per_page in pages.items():
+        sly.logger.debug(
+            f"Page number: {page_number}. Images per page: {images_per_page}."
+        )
         # Get the list of images on the current page.
         # Test time of API response, delete in production.
+        if page_number < start_page_number:
+            sly.logger.debug(
+                f"Skip page {page_number} due to lower than start number: {start_page_number}."
+            )
+            continue
         init_call_time = perf_counter()
         images_on_page = g.flickr_api.Photo.search(
             text=search_query,
@@ -104,10 +132,20 @@ def images_from_flicker(
         sly.logger.debug(
             f"Time of Flickr API response: {flickr_search_time} for {images_per_page} images."
         )
+
+        if page_number == start_page_number:
+            sly.logger.debug(
+                f"Page number {page_number} is equal to start page number {start_page_number}. Slicing the result "
+                f"list of images with {start_offset_number} offset."
+            )
+            images_on_page = images_on_page[start_offset_number:]
+
         # Iterate over the list of images on the current page.
         for image in images_on_page:
             image_as_dict = image.__dict__
+            # Extract the link to the original image.
             link = image_as_dict.get("url_o")
+            # Checking if the link is correct and the image is not a duplicate.
             if not link or not link.endswith(".jpg") or link in global_links:
                 filtered_images += 1
                 sly.logger.warning(
@@ -115,7 +153,15 @@ def images_from_flicker(
                     f"to no link, wrong extension or as duplicate."
                 )
                 continue
+            # Extract the name of the image from the link
             name = os.path.basename(link)
+            # Check if the image already exists in the dataset.
+            if dataset_id and name in existing_names:
+                existed_duplicates += 1
+                sly.logger.warning(
+                    f"Image with name {name} is skipped because it already exists in the dataset."
+                )
+                continue
             global_names.append(name)
             global_links.append(link)
             global_metas.append(get_image_metadata(image_as_dict, metadata))
@@ -123,8 +169,11 @@ def images_from_flicker(
     # Debug code to check if the lists contain duplicates and have the same length.
     # Delete in production.
     sly.logger.debug(
-        f"Flickr API returned {len(global_names) +  filtered_images} images for "
+        f"Flickr API returned {len(global_names) +  filtered_images + existed_duplicates} images for "
         f"search query with {images_number} images number."
+    )
+    sly.logger.debug(
+        f"Skipped {existed_duplicates} number of images already existed in the dataset."
     )
     sly.logger.debug(f"Full Flickr API search time: {full_flickr_search_time}")
     sly.logger.debug(
@@ -137,7 +186,8 @@ def images_from_flicker(
         f"All objects have similar length: {len(global_names) == len(global_links) == len(global_metas)}"
     )
     sly.logger.debug(
-        f"Total number of filtered results: {len(global_names)}. {filtered_images} was filtered as bad results."
+        f"Total number of results after filtering: {len(global_names)}. {filtered_images} was filtered as bad results. "
+        f"{existed_duplicates} was filtered as duplicates."
     )
     return global_names, global_links, global_metas
 
@@ -342,6 +392,11 @@ def flickr_to_supervisely():
     download_button.text = "Searching..."
     cancel_button.show()
 
+    # Read the project and dataset ids from the destination input.
+    project_id = destination.get_selected_project_id()
+    global dataset_id
+    dataset_id = destination.get_selected_dataset_id()
+
     # Define the global variable to check if the download should continue.
     global continue_downloading
     continue_downloading = True
@@ -351,6 +406,9 @@ def flickr_to_supervisely():
     search_query = input.search_query_input.get_value()
 
     images_number = input.images_number_input.get_value()
+
+    start_number = input.start_number_input.get_value()
+
     license_type = settings.select_license.get_value()
     global license_text
     license_text = g.LICENSE_TYPES_BY_NUMBER[license_type]
@@ -376,7 +434,7 @@ def flickr_to_supervisely():
 
     # Get the lists of names, links and metadata for the search results.
     names, links, metas = images_from_flicker(
-        search_query, images_number, license_type, metadata
+        search_query, images_number, license_type, metadata, start_number
     )
 
     upload_type = settings.upload_type.get_value()
@@ -401,9 +459,13 @@ def flickr_to_supervisely():
             show_result_message()
             return
 
-    # Get the project and dataset ids. Create the project and dataset if they don't exist.
-    # Prapare global names of project and dataset to use them in the result message.
-    project_id, dataset_id = get_project_and_dataset_ids()
+    # Create the project and dataset if they don't exist.
+    if not project_id:
+        project_id = create_project(destination.get_project_name())
+    if not dataset_id:
+        dataset_id = create_dataset(project_id, destination.get_dataset_name())
+
+    # Prepare global names of project and dataset to use them in the result message.
     global project_name
     project_name = g.api.project.get_info_by_id(project_id).name
     global dataset_name
@@ -457,26 +519,6 @@ def show_result_message(uploaded_images_number: Optional[int] = 0, error: bool =
     sleep(5)
     result_message.hide()
     download_button.text = "Start download"
-
-
-def get_project_and_dataset_ids() -> Tuple[int]:
-    """If the project or dataset does not exist, create it and return its id.
-    Otherwise, return the id of the existing project and dataset.
-
-    Returns:
-        Tuple[int]: tuple with project and dataset ids
-    """
-    # Read the project and dataset ids from the destination input.
-    project_id = destination.get_selected_project_id()
-    dataset_id = destination.get_selected_dataset_id()
-
-    # If the project or dataset does not exist, create it.
-    if not project_id:
-        project_id = create_project(destination.get_project_name())
-    if not dataset_id:
-        dataset_id = create_dataset(project_id, destination.get_dataset_name())
-
-    return project_id, dataset_id
 
 
 def create_project(project_name: Optional[str]) -> int:
