@@ -49,7 +49,7 @@ card = Card(
 def images_from_flicker(
     search_query: str,
     images_number: int,
-    license_type: int,
+    license_type: List[int],
     metadata: List[str],
     start_number: int,
 ) -> Tuple[List[str], List[str], List[Dict[str, str]]]:
@@ -59,7 +59,7 @@ def images_from_flicker(
     Args:
         search_query (str): search query for images
         images_number (int): number of images to search
-        license_type (int): license type for images (4 for Creative Commons Attribution-NonCommercial)
+        license_type (List[int]): license types for images to search
         metadata (List[str]): list of metadata fields to add for images
         start_number (int): number of images to skip from the beginning of the search
 
@@ -120,7 +120,7 @@ def images_from_flicker(
             content_type=1,
             media="photos",
             per_page=images_per_page,
-            license=license_type,
+            license=",".join([str(i) for i in license_type]),
             page=page_number,
             extras=",".join(metadata),
         )
@@ -364,9 +364,7 @@ def get_image_metadata(
         image to use with upload_links() function
     """
     # Using predefined license text for the images.
-    image_metadata = {
-        "License type": license_text,
-    }
+    image_metadata = {}
 
     for key in metadata:
         if key == "owner":
@@ -374,8 +372,8 @@ def get_image_metadata(
             owner = image_as_dict.get(key).__dict__
             image_metadata["Owner id"] = owner.get("id")
         elif key == "license":
-            # Skipping the license field because it is already added to the image metadata.
-            pass
+            license_number = int(image_as_dict.get(key))
+            image_metadata[key] = g.LICENSE_TYPES_BY_NUMBER[license_number]
         else:
             image_metadata[key.title()] = image_as_dict.get(key)
 
@@ -385,6 +383,13 @@ def get_image_metadata(
 @download_button.click
 def flickr_to_supervisely():
     """Reads the data from the input fields and starts downloading images from Flickr."""
+    license_type = settings.select_license.get_value()
+    if not license_type:
+        settings.license_message.show()
+        sleep(3)
+        settings.license_message.hide()
+        return
+
     # Test time of the whole function, delete in production.
     start_time = perf_counter()
     # Show the cancel button and change the text on the download button.
@@ -409,10 +414,6 @@ def flickr_to_supervisely():
 
     start_number = input.start_number_input.get_value()
 
-    license_type = settings.select_license.get_value()
-    global license_text
-    license_text = g.LICENSE_TYPES_BY_NUMBER[license_type]
-
     # Reading global constant for required metadata fields.
     metadata = [
         key
@@ -428,8 +429,8 @@ def flickr_to_supervisely():
         ]
     )
     sly.logger.debug(
-        f"Started with the following parameters: Search query: {search_query}; "
-        f"Images number: {images_number}; License type: {license_type}; Metadata: {metadata};"
+        f"Started with the following parameters: Search query: {search_query}; Start number: {start_number};"
+        f"Images number: {images_number}; License types: {license_type}; Metadata: {metadata};"
     )
 
     # Get the lists of names, links and metadata for the search results.

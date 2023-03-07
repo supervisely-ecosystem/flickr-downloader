@@ -29,7 +29,11 @@ FLICKR_API_SECRET = os.environ["FLICKR_API_SECRET"]
 
 # Constant settings for images search.
 LICENSE_TYPES = {
-    "CC: Attribution-NonCommercial": 4,
+    "CC BY-SA": 1,
+    "CC BY-NC": 2,
+    "CC BY: Attribution": 4,
+    "CC0": 9,
+    "PDM": 10,
 }
 # Inverted dictionary for getting text representation of license type by its number.
 LICENSE_TYPES_BY_NUMBER = {v: k for k, v in LICENSE_TYPES.items()}

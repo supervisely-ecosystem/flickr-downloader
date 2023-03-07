@@ -18,9 +18,9 @@ for field in g.OPTIONAL_METADATA_FIELDS:
 
 blocked_chekboxes = {}
 for field in g.REQUIRED_METADATA_FIELDS:
-    blocked_chekboxes[field] = Checkbox(
-        content=f"Image {field}", disabled=True, checked=True
-    )
+    blocked_chekboxes[field] = Checkbox(content=f"Image {field}", checked=True)
+for checkbox in blocked_chekboxes.values():
+    checkbox.disable()
 
 
 license_items = []
@@ -28,7 +28,10 @@ for key, value in g.LICENSE_TYPES.items():
     license_items.append(Select.Item(value=value, label=key))
 
 select_license_text = Text(text="Select license type:")
-select_license = Select(items=license_items)
+select_license = Select(items=license_items, multiple=True)
+
+license_message = Text(status="error", text="License type is not selected.")
+license_message.hide()
 
 owner_info_note = Text(
     status="info",
@@ -50,6 +53,7 @@ metadata_card = Card(
             checkboxes_container,
             select_license_text,
             select_license,
+            license_message,
         ]
     ),
 )
