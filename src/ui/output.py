@@ -33,16 +33,14 @@ result_message.hide()
 
 destination = DestinationProject(g.WORKSPACE_ID, project_type="images")
 
-buttons_container = Container(widgets=[download_button, cancel_button])
-
-output_container = Container(
-    widgets=[destination, progress, result_message, buttons_container],
-    direction="vertical",
-)
+# Main card for all output widgets.
 card = Card(
     "Choose destination",
     "Select the destination for downloading images. If not filled the names will be generated automatically. ",
-    content=output_container,
+    content=Container(
+        widgets=[destination, progress, result_message, download_button, cancel_button],
+        direction="vertical",
+    ),
 )
 
 
@@ -83,9 +81,10 @@ def images_from_flicker(
     sly.logger.debug(
         f"Paging: {pages}, start page: {start_page_number}, start offset: {start_offset_number}."
     )
-    #
+    # Check if adding images to an existing dataset.
     global dataset_id
     if dataset_id:
+        # Read the list of existing file names to check for duplicates in search results.
         sly.logger.debug(f"Dataset ID is not None: {dataset_id}.")
         existing_names = [image.name for image in g.api.image.get_list(dataset_id)]
         sly.logger.debug(f"Read {len(existing_names)} existing names from the dataset.")
@@ -102,17 +101,13 @@ def images_from_flicker(
     global full_flickr_search_time
     full_flickr_search_time = 0
 
-    for page_number, images_per_page in pages.items():
+    for page_number in range(start_page_number, len(pages) + 1):
+        images_per_page = pages[page_number]
         sly.logger.debug(
             f"Page number: {page_number}. Images per page: {images_per_page}."
         )
-        # Get the list of images on the current page.
+
         # Test time of API response, delete in production.
-        if page_number < start_page_number:
-            sly.logger.debug(
-                f"Skip page {page_number} due to lower than start number: {start_page_number}."
-            )
-            continue
         init_call_time = perf_counter()
         images_on_page = g.flickr_api.Photo.search(
             text=search_query,
@@ -128,12 +123,12 @@ def images_from_flicker(
         end_call_time = perf_counter()
         flickr_search_time = end_call_time - init_call_time
         full_flickr_search_time += flickr_search_time
-
         sly.logger.debug(
             f"Time of Flickr API response: {flickr_search_time} for {images_per_page} images."
         )
 
         if page_number == start_page_number:
+            # Slice the list of images on the first page according to the start offset.
             sly.logger.debug(
                 f"Page number {page_number} is equal to start page number {start_page_number}. Slicing the result "
                 f"list of images with {start_offset_number} offset."
@@ -145,7 +140,7 @@ def images_from_flicker(
             image_as_dict = image.__dict__
             # Extract the link to the original image.
             link = image_as_dict.get("url_o")
-            # Checking if the link is correct and the image is not a duplicate.
+            # Checking if the link is correct and the image is not a duplicate in search results.
             if not link or not link.endswith(".jpg") or link in global_links:
                 filtered_images += 1
                 sly.logger.warning(
@@ -155,13 +150,14 @@ def images_from_flicker(
                 continue
             # Extract the name of the image from the link
             name = os.path.basename(link)
-            # Check if the image already exists in the dataset.
+            # Check if the image already exists in the dataset if adding images to an existing dataset.
             if dataset_id and name in existing_names:
                 existed_duplicates += 1
                 sly.logger.warning(
                     f"Image with name {name} is skipped because it already exists in the dataset."
                 )
                 continue
+
             global_names.append(name)
             global_links.append(link)
             global_metas.append(get_image_metadata(image_as_dict, metadata))
@@ -299,7 +295,7 @@ def upload_images_to_dataset(
     names: List[str],
     links: List[str],
     metas: List[Dict[str, str]],
-    upload_type: str,
+    upload_method: str,
 ) -> int:
     """Adds images to the specified dataset using the list of names, links and metadata in batches.
 
@@ -308,7 +304,7 @@ def upload_images_to_dataset(
         names (List[str]): list with images filenames
         links (List[str]): list with images links
         metas (List[Dict[str, str]]): list with images metadata
-
+        upload_method (str): the method to upload images to the dataset
     Returns:
         int: the number of uploaded images
     """
@@ -333,11 +329,11 @@ def upload_images_to_dataset(
             if continue_downloading:
                 download_button.text = "Uploading..."
                 cancel_button.text = "Cancel upload"
-                if upload_type == "links":
+                if upload_method == "links":
                     uploaded_images = g.api.image.upload_links(
                         dataset_id, batch_names, batch_links, metas=batch_metas
                     )
-                elif upload_type == "files":
+                elif upload_method == "files":
                     uploaded_images = g.api.image.upload_paths(
                         dataset_id, batch_names, batch_links, metas=batch_metas
                     )
@@ -363,7 +359,6 @@ def get_image_metadata(
         Dict[str, str]: dictionary with the specified metadata fields for the
         image to use with upload_links() function
     """
-    # Using predefined license text for the images.
     image_metadata = {}
 
     for key in metadata:
@@ -372,6 +367,7 @@ def get_image_metadata(
             owner = image_as_dict.get(key).__dict__
             image_metadata["Owner id"] = owner.get("id")
         elif key == "license":
+            # Retrieving the license text by its number.
             license_number = int(image_as_dict.get(key))
             image_metadata[key] = g.LICENSE_TYPES_BY_NUMBER[license_number]
         else:
@@ -390,6 +386,15 @@ def flickr_to_supervisely():
         settings.license_message.hide()
         return
 
+    # Define the global variable of search query to use it when creating project or dataset.
+    global search_query
+    search_query = input.search_query_input.get_value()
+    if not search_query:
+        input.query_message.show()
+        sleep(3)
+        input.query_message.hide()
+        return
+
     # Test time of the whole function, delete in production.
     start_time = perf_counter()
     # Show the cancel button and change the text on the download button.
@@ -406,19 +411,15 @@ def flickr_to_supervisely():
     global continue_downloading
     continue_downloading = True
 
-    # Define the global variable of search query to use it when creating project or dataset.
-    global search_query
-    search_query = input.search_query_input.get_value()
-
     images_number = input.images_number_input.get_value()
 
-    start_number = input.start_number_input.get_value()
+    start_number = settings.start_number_input.get_value()
 
     # Reading global constant for required metadata fields.
     metadata = [
         key
-        for key in settings.blocked_chekboxes.keys()
-        if settings.blocked_chekboxes[key].is_checked()
+        for key in settings.disabled_chekboxes.keys()
+        if settings.disabled_chekboxes[key].is_checked()
     ]
     # Add the metadata fields selected by the user to the list of metadata.
     metadata.extend(
@@ -438,7 +439,7 @@ def flickr_to_supervisely():
         search_query, images_number, license_type, metadata, start_number
     )
 
-    upload_type = settings.upload_type.get_value()
+    upload_method = settings.upload_method_radio.get_value()
 
     # Check if there are any images found for the query.
     if not (names and links and metas):  # Move to function?
@@ -454,7 +455,7 @@ def flickr_to_supervisely():
         f"excluding API requests: {search_and_prepare_time - full_flickr_search_time} seconds."
     )
     # Upload the images to the dataset and get the number of uploaded images.
-    if upload_type == "files":
+    if upload_method == "files":
         names, links, metas = download_images(names, links, metas)
         if not continue_downloading:
             show_result_message()
@@ -474,7 +475,7 @@ def flickr_to_supervisely():
 
     # Start the upload to the dataset with the specified upload type.
     uploaded_images_number = upload_images_to_dataset(
-        dataset_id, names, links, metas, upload_type=upload_type
+        dataset_id, names, links, metas, upload_method=upload_method
     )
 
     # Debug variable to test the time of the whole function, delete in production.
