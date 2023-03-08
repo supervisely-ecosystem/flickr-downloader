@@ -3,7 +3,7 @@ import os
 import supervisely as sly
 from dotenv import load_dotenv
 
-import flickr_api
+# import flickr_api
 
 load_dotenv("local.env")
 load_dotenv(os.path.expanduser("~/supervisely.env"))
@@ -12,8 +12,6 @@ api: sly.Api = sly.Api.from_env()
 
 TEAM_ID = sly.io.env.team_id()
 WORKSPACE_ID = sly.io.env.workspace_id()
-PROJECT_ID = sly.io.env.project_id()
-DATASET_ID = sly.io.env.dataset_id()
 
 SLY_APP_DATA_DIR = os.environ["SLY_APP_DATA_DIR"]
 IMAGES_TMP_DIR = "images"
@@ -22,10 +20,14 @@ IMAGES_TMP_DIR = "images"
 BATCH_SIZE = 10
 MAX_WORKERS = 5
 
+# Get flickr.env from the team files.
+# INPUT_FILE = os.environ["context.slyFile"]
+# api.file.download(TEAM_ID, INPUT_FILE, "flickr.env")
+
 # Flickr API init with keys from .env file.
-load_dotenv("flickr.env")
-FLICKR_API_KEY = os.environ["FLICKR_API_KEY"]
-FLICKR_API_SECRET = os.environ["FLICKR_API_SECRET"]
+# load_dotenv("flickr.env")
+# FLICKR_API_KEY = os.environ["FLICKR_API_KEY"]
+# FLICKR_API_SECRET = os.environ["FLICKR_API_SECRET"]
 
 # Constant settings for images search.
 LICENSE_TYPES = {
@@ -43,4 +45,4 @@ REQUIRED_METADATA_FIELDS = ["owner", "license"]
 OPTIONAL_METADATA_FIELDS = ["id", "title", "description"]
 DOWNLOAD_TYPES = ["links", "files"]
 
-flickr_api.set_keys(FLICKR_API_KEY, FLICKR_API_SECRET)
+# flickr_api.set_keys(FLICKR_API_KEY, FLICKR_API_SECRET)

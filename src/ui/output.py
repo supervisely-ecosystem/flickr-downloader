@@ -2,7 +2,7 @@ import os
 import requests
 
 from shutil import rmtree
-from time import sleep, perf_counter
+from time import perf_counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple, Optional
 
@@ -14,14 +14,17 @@ from supervisely.app.widgets import (
     Card,
     Progress,
     Text,
+    DatasetThumbnail,
 )
 
 import src.globals as g
+import src.ui.keys as keys
 import src.ui.input as input
 import src.ui.settings as settings
 
 download_button = Button(text="Start download")
 cancel_button = Button(text="Cancel download", button_type="danger")
+download_button.disable()
 
 cancel_button.hide()
 
@@ -33,12 +36,22 @@ result_message.hide()
 
 destination = DestinationProject(g.WORKSPACE_ID, project_type="images")
 
+dataset_thumbnail = DatasetThumbnail(show_project_name=True)
+dataset_thumbnail.hide()
+
 # Main card for all output widgets.
 card = Card(
     "Choose destination",
     "Select the destination for downloading images. If not filled the names will be generated automatically. ",
     content=Container(
-        widgets=[destination, progress, result_message, download_button, cancel_button],
+        widgets=[
+            destination,
+            progress,
+            download_button,
+            cancel_button,
+            result_message,
+            dataset_thumbnail,
+        ],
         direction="vertical",
     ),
 )
@@ -109,7 +122,7 @@ def images_from_flicker(
 
         # Test time of API response, delete in production.
         init_call_time = perf_counter()
-        images_on_page = g.flickr_api.Photo.search(
+        images_on_page = keys.flickr_api.Photo.search(
             text=search_query,
             sort="relevance",
             content_type=1,
@@ -379,11 +392,15 @@ def get_image_metadata(
 @download_button.click
 def flickr_to_supervisely():
     """Reads the data from the input fields and starts downloading images from Flickr."""
+    # Hiding all info messages after the download button was pressed.
+    settings.license_message.hide()
+    input.query_message.hide()
+    result_message.hide()
+    dataset_thumbnail.hide()
+
     license_type = settings.select_license.get_value()
     if not license_type:
         settings.license_message.show()
-        sleep(3)
-        settings.license_message.hide()
         return
 
     # Define the global variable of search query to use it when creating project or dataset.
@@ -391,8 +408,6 @@ def flickr_to_supervisely():
     search_query = input.search_query_input.get_value()
     if not search_query:
         input.query_message.show()
-        sleep(3)
-        input.query_message.hide()
         return
 
     # Test time of the whole function, delete in production.
@@ -403,6 +418,8 @@ def flickr_to_supervisely():
     cancel_button.show()
 
     # Read the project and dataset ids from the destination input.
+    # Define the global variables to use them in show_result_message().
+    global project_id
     project_id = destination.get_selected_project_id()
     global dataset_id
     dataset_id = destination.get_selected_dataset_id()
@@ -467,12 +484,6 @@ def flickr_to_supervisely():
     if not dataset_id:
         dataset_id = create_dataset(project_id, destination.get_dataset_name())
 
-    # Prepare global names of project and dataset to use them in the result message.
-    global project_name
-    project_name = g.api.project.get_info_by_id(project_id).name
-    global dataset_name
-    dataset_name = g.api.dataset.get_info_by_id(dataset_id).name
-
     # Start the upload to the dataset with the specified upload type.
     uploaded_images_number = upload_images_to_dataset(
         dataset_id, names, links, metas, upload_method=upload_method
@@ -491,26 +502,29 @@ def show_result_message(uploaded_images_number: Optional[int] = 0, error: bool =
 
     Args:
         uploaded_images_number (Optional[int]): the number of uploaded images
+        error (bool): if there was an error during the download
     """
     cancel_button.hide()
-    download_button.text = "Finishing..."
+    if project_id and dataset_id:
+        project = g.api.project.get_info_by_id(project_id)
+        dataset = g.api.dataset.get_info_by_id(id=dataset_id)
+        dataset_thumbnail.set(project, dataset)
+
     if error:
         result_message.text = "No images found for this query."
         result_message.status = "error"
     elif continue_downloading:
         # If the upload was not cancelled, prepare the success message.
-        result_message.text = (
-            f"Successfully uploaded {uploaded_images_number} "
-            f"images to the project {project_name}; dataset {dataset_name}."
-        )
+        result_message.text = f"Successfully uploaded {uploaded_images_number} images."
         result_message.status = "success"
+        dataset_thumbnail.show()
     elif uploaded_images_number:
         # If the upload was cancelled, prepare the warning message.
         result_message.text = (
-            f"Download was cancelled after uploading {uploaded_images_number} "
-            f"images to the project {project_name}; dataset {dataset_name}."
+            f"Download was cancelled after uploading {uploaded_images_number} images."
         )
         result_message.status = "warning"
+        dataset_thumbnail.show()
     else:
         # If the upload was cancelled and no images were uploaded, prepare the error message.
         result_message.text = "Download was cancelled. No images were uploaded."
@@ -518,8 +532,6 @@ def show_result_message(uploaded_images_number: Optional[int] = 0, error: bool =
 
     # Show the result message and hide it after 3 seconds.
     result_message.show()
-    sleep(5)
-    result_message.hide()
     download_button.text = "Start download"
 
 
