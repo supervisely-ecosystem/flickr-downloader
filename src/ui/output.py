@@ -1,10 +1,12 @@
 import os
 import requests
 
+from datetime import datetime
 from shutil import rmtree
 from time import perf_counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple, Optional
+from collections import defaultdict
 
 import supervisely as sly
 from supervisely.app.widgets import (
@@ -22,9 +24,8 @@ import src.ui.keys as keys
 import src.ui.input as input
 import src.ui.settings as settings
 
-download_button = Button(text="Start download")
-cancel_button = Button(text="Cancel download", button_type="danger")
-download_button.disable()
+download_button = Button(text="Start upload")
+cancel_button = Button(text="Cancel upload", button_type="danger")
 
 cancel_button.hide()
 
@@ -54,7 +55,9 @@ card = Card(
         ],
         direction="vertical",
     ),
+    lock_message="Please, enter API key and check the connection to the Flickr API.",
 )
+card.lock()
 
 
 def images_from_flicker(
@@ -107,9 +110,9 @@ def images_from_flicker(
     filtered_images = 0
     existed_duplicates = 0
 
-    global_names = []
-    global_links = []
-    global_metas = []
+    names = []
+    links = []
+    metas = []
     # Debug timer, delete in production.
     global full_flickr_search_time
     full_flickr_search_time = 0
@@ -124,9 +127,9 @@ def images_from_flicker(
         init_call_time = perf_counter()
         images_on_page = keys.flickr_api.Photo.search(
             text=search_query,
-            sort="relevance",
-            content_type=1,
-            media="photos",
+            sort=g.SORT_TYPE,
+            content_type=g.CONTENT_TYPE,
+            media=g.MEDIA_TYPE,
             per_page=images_per_page,
             license=",".join([str(i) for i in license_type]),
             page=page_number,
@@ -154,9 +157,9 @@ def images_from_flicker(
             # Extract the link to the original image.
             link = image_as_dict.get("url_o")
             # Checking if the link is correct and the image is not a duplicate in search results.
-            if not link or not link.endswith(".jpg") or link in global_links:
+            if not link or not link.endswith(".jpg") or link in links:
                 filtered_images += 1
-                sly.logger.warning(
+                sly.logger.debug(
                     f"Image with id {image_as_dict.get('id')} is skipped due "
                     f"to no link, wrong extension or as duplicate."
                 )
@@ -166,19 +169,19 @@ def images_from_flicker(
             # Check if the image already exists in the dataset if adding images to an existing dataset.
             if dataset_id and name in existing_names:
                 existed_duplicates += 1
-                sly.logger.warning(
+                sly.logger.debug(
                     f"Image with name {name} is skipped because it already exists in the dataset."
                 )
                 continue
 
-            global_names.append(name)
-            global_links.append(link)
-            global_metas.append(get_image_metadata(image_as_dict, metadata))
+            names.append(name)
+            links.append(link)
+            metas.append(get_image_metadata(image_as_dict, metadata))
 
     # Debug code to check if the lists contain duplicates and have the same length.
     # Delete in production.
     sly.logger.debug(
-        f"Flickr API returned {len(global_names) +  filtered_images + existed_duplicates} images for "
+        f"Flickr API returned {len(names) +  filtered_images + existed_duplicates} images for "
         f"search query with {images_number} images number."
     )
     sly.logger.debug(
@@ -186,31 +189,31 @@ def images_from_flicker(
     )
     sly.logger.debug(f"Full Flickr API search time: {full_flickr_search_time}")
     sly.logger.debug(
-        f"Names list doesn't contain duplicates: {len(global_names) == len(set(global_names))}"
+        f"Names list doesn't contain duplicates: {len(names) == len(set(names))}"
     )
     sly.logger.debug(
-        f"Links list doesn't contain duplicates: {len(global_links) == len(set(global_links))}"
+        f"Links list doesn't contain duplicates: {len(links) == len(set(links))}"
     )
     sly.logger.debug(
-        f"All objects have similar length: {len(global_names) == len(global_links) == len(global_metas)}"
+        f"All objects have similar length: {len(names) == len(links) == len(metas)}"
     )
     sly.logger.debug(
-        f"Total number of results after filtering: {len(global_names)}. {filtered_images} was filtered as bad results. "
+        f"Total number of results after filtering: {len(names)}. {filtered_images} was filtered as bad results. "
         f"{existed_duplicates} was filtered as duplicates."
     )
-    return global_names, global_links, global_metas
+    return names, links, metas
 
 
 def download_images(
-    global_names: List[str], global_links: List[str], global_metas: List[Dict[str, str]]
+    names: List[str], links: List[str], metas: List[Dict[str, str]]
 ) -> Tuple[List[str], List[str], List[Dict[str, str]]]:
     """Downloads the images with specified links to the local temporary directory.
     Filters names and metas to match the downloaded images.
 
     Args:
-        global_names (List[str]): names of the files to download
-        global_links (List[str]): global links to the files to download
-        global_metas (List[Dict[str, str]]): metadata for the files to download
+        names (List[str]): names of the files to download
+        links (List[str]): global links to the files to download
+        metas (List[Dict[str, str]]): metadata for the files to download
 
     Returns:
         Tuple[List[str], List[str], List[Dict[str, str]]]: returns the list of local image names,
@@ -219,8 +222,7 @@ def download_images(
     # Debug variable to calculate time of image downloads. Delete in production.
     start_time = perf_counter()
 
-    cancel_button.text = "Cancel download"
-    download_button.text = "Downloading..."
+    cancel_button.text = "Cancel upload"
 
     # Creating the temporary directory for images.
     outpur_dir = os.path.join(g.SLY_APP_DATA_DIR, g.IMAGES_TMP_DIR)
@@ -230,7 +232,7 @@ def download_images(
     local_links = []
     local_metas = []
 
-    def download_image(global_link: str, image_number: int, progress: Progress):
+    def download_image(link: str, image_number: int):
         """Downloads the image with specified link to the local temporary directory.
 
         Args:
@@ -239,56 +241,34 @@ def download_images(
             metas and names lists according to the downloaded images.
             progress (Progress): progress object to update when downloading the image.
         """
-        name = global_names[image_number]
-        meta = global_metas[image_number]
+        name = names[image_number]
+        meta = metas[image_number]
 
-        response = requests.get(global_link)
+        response = requests.get(link)
         # Creating path for image to download.
-        link = os.path.join(outpur_dir, name)
+        local_link = os.path.join(outpur_dir, name)
 
         try:
             # Writing the image to the local temporary directory.
-            with open(link, "wb") as fo:
+            with open(local_link, "wb") as fo:
                 fo.write(response.content)
             # Adding data to the local lists if the image was downloaded successfully.
             local_names.append(name)
-            local_links.append(link)
+            local_links.append(local_link)
             local_metas.append(meta)
 
             sly.logger.debug(
-                f"Image #{image_number} downloaded successfully as {link}."
+                f"Image #{image_number} downloaded successfully as {local_link}."
             )
-            pbar.update(1)
         except Exception as error:
             sly.logger.error(
                 f"There was an error while downloading the image #{image_number}: {error}."
             )
 
-    progress.show()
-    with progress(
-        message="Downloading images from Flickr...", total=len(global_names)
-    ) as pbar:
-        with ThreadPoolExecutor(max_workers=g.MAX_WORKERS) as executor:
-            # Number of the image in the global lists to access the metadata and names.
-            image_number = 0
-            while continue_downloading:
-                # Adding the download tasks to the executor queue (<= g.MAX_WORKERS)
-                # in case the cancel button was pressed.
-                for i in range(g.MAX_WORKERS):
-                    if image_number >= len(global_links):
-                        # If the list of links is over.
-                        break
-
-                    global_link = global_links[image_number]
-                    future = executor.submit(
-                        download_image, global_link, image_number, pbar
-                    )
-                    image_number += 1
-                # Waiting for the tasks to finish.
-                future.result()
-                # Stopping the loop if the list of links is over.
-                if image_number >= len(global_links):
-                    break
+    with ThreadPoolExecutor(max_workers=g.MAX_WORKERS) as executor:
+        # Number of the image in the global lists to access the metadata and names.
+        for image_number, link in enumerate(links):
+            executor.submit(download_image, link, image_number)
 
     # Debug code to calculate time of image downloads. Delete in production.
     end_time = perf_counter()
@@ -305,58 +285,42 @@ def download_images(
 
 def upload_images_to_dataset(
     dataset_id: int,
-    names: List[str],
-    links: List[str],
-    metas: List[Dict[str, str]],
+    batch_names: List[str],
+    batch_links: List[str],
+    batch_metas: List[Dict[str, str]],
     upload_method: str,
 ) -> int:
     """Adds images to the specified dataset using the list of names, links and metadata in batches.
 
     Args:
         dataset_id (int): the ID of the dataset to add images to
-        names (List[str]): list with images filenames
-        links (List[str]): list with images links
-        metas (List[Dict[str, str]]): list with images metadata
+        batch_names (List[str]): list with images filenames
+        batch_links (List[str]): list with images links
+        batch_metas (List[Dict[str, str]]): list with images metadata
         upload_method (str): the method to upload images to the dataset
     Returns:
         int: the number of uploaded images
     """
 
     sly.logger.debug(
-        f"Starting to upload images to dataset {dataset_id}. Number of images: {len(names)}"
+        f"Starting to upload {len(batch_names)} images to dataset {dataset_id} with {upload_method} upload method."
     )
+    # Check if the user hasn't pressed the cancel button.
+    if continue_downloading:
+        if upload_method == "links":
+            uploaded_images = g.api.image.upload_links(
+                dataset_id, batch_names, batch_links, metas=batch_metas
+            )
+        elif upload_method == "files":
+            uploaded_images = g.api.image.upload_paths(
+                dataset_id, batch_names, batch_links, metas=batch_metas
+            )
 
-    progress.show()
-    uploaded_images_number = 0
+        sly.logger.debug(
+            f"Finished uploading batch with {len(uploaded_images)} images to dataset {dataset_id}."
+        )
 
-    with progress(
-        message="Uploading images to the dataset...", total=len(names)
-    ) as pbar:
-        # Batch the lists of names, links and metadata.
-        for batch_names, batch_links, batch_metas in zip(
-            sly.batched(names, batch_size=g.BATCH_SIZE),
-            sly.batched(links, batch_size=g.BATCH_SIZE),
-            sly.batched(metas, batch_size=g.BATCH_SIZE),
-        ):
-            # Check if the user hasn't pressed the cancel button.
-            if continue_downloading:
-                download_button.text = "Uploading..."
-                cancel_button.text = "Cancel upload"
-                if upload_method == "links":
-                    uploaded_images = g.api.image.upload_links(
-                        dataset_id, batch_names, batch_links, metas=batch_metas
-                    )
-                elif upload_method == "files":
-                    uploaded_images = g.api.image.upload_paths(
-                        dataset_id, batch_names, batch_links, metas=batch_metas
-                    )
-                pbar.update(g.BATCH_SIZE)
-                uploaded_images_number += len(uploaded_images)
-
-    # Delete the temporary directory with images.
-    rmtree(g.SLY_APP_DATA_DIR, ignore_errors=True)
-
-    return uploaded_images_number
+        return len(uploaded_images)
 
 
 def get_image_metadata(
@@ -372,17 +336,19 @@ def get_image_metadata(
         Dict[str, str]: dictionary with the specified metadata fields for the
         image to use with upload_links() function
     """
-    image_metadata = {}
+    image_metadata = {"Flickr image URL": image_as_dict.get("url_o")}
 
     for key in metadata:
         if key == "owner":
             # Unpacking the owner object to get the owner id.
             owner = image_as_dict.get(key).__dict__
-            image_metadata["Owner id"] = owner.get("id")
+            image_metadata["Flickr owner id"] = owner.get("id")
         elif key == "license":
             # Retrieving the license text by its number.
             license_number = int(image_as_dict.get(key))
             image_metadata[key] = g.LICENSE_TYPES_BY_NUMBER[license_number]
+        elif key == "id":
+            image_metadata["Flickr image ID"] = image_as_dict.get(key)
         else:
             image_metadata[key.title()] = image_as_dict.get(key)
 
@@ -471,12 +437,6 @@ def flickr_to_supervisely():
         f"Search and prepare time: {search_and_prepare_time} seconds. Time "
         f"excluding API requests: {search_and_prepare_time - full_flickr_search_time} seconds."
     )
-    # Upload the images to the dataset and get the number of uploaded images.
-    if upload_method == "files":
-        names, links, metas = download_images(names, links, metas)
-        if not continue_downloading:
-            show_result_message()
-            return
 
     # Create the project and dataset if they don't exist.
     if not project_id:
@@ -484,14 +444,72 @@ def flickr_to_supervisely():
     if not dataset_id:
         dataset_id = create_dataset(project_id, destination.get_dataset_name())
 
-    # Start the upload to the dataset with the specified upload type.
-    uploaded_images_number = upload_images_to_dataset(
-        dataset_id, names, links, metas, upload_method=upload_method
-    )
+    progress.show()
+    uploaded_images_number = 0
+
+    with progress(
+        message="Uploading images to the dataset...", total=len(names)
+    ) as pbar:
+        # Batch the lists of names, links and metadata.
+        for batch_names, batch_links, batch_metas in zip(
+            sly.batched(names, batch_size=g.BATCH_SIZE),
+            sly.batched(links, batch_size=g.BATCH_SIZE),
+            sly.batched(metas, batch_size=g.BATCH_SIZE),
+        ):
+            # Nullify the variable for each batch.
+            uploaded_batch_images_number = 0
+
+            # Check if the cancel button was pressed.
+            if continue_downloading:
+                download_button.text = "Uploading..."
+                cancel_button.text = "Cancel upload"
+
+                if upload_method == "files":
+                    # If the upload method is files, download the images instead of using the links.
+                    batch_names, batch_links, batch_metas = download_images(
+                        batch_names, batch_links, batch_metas
+                    )
+
+                # Upload the batch of images to the dataset.
+                uploaded_batch_images_number = upload_images_to_dataset(
+                    dataset_id, batch_names, batch_links, batch_metas, upload_method
+                )
+            if uploaded_batch_images_number:
+                # Update the progress bar and the number of uploaded images.
+                uploaded_images_number += uploaded_batch_images_number
+                pbar.update(uploaded_batch_images_number)
 
     # Debug variable to test the time of the whole function, delete in production.
     end_time = perf_counter()
     sly.logger.debug(f"Time: {end_time - start_time} seconds")
+
+    # Preparing defaultdict for custom_data from project.
+    custom_data = defaultdict(dict)
+
+    # Update the custom_data with the data from the project.
+    custom_data.update(g.api.project.get_info_by_id(project_id).custom_data)
+
+    # Adding app search results to the custom_data of the project.
+    search_query_dict = custom_data[g.CUSTOM_DATA_KEY].get(search_query, {})
+    search_query_dict.update(
+        {
+            datetime.now().strftime("%Y/%m/%d %H:%M:%S"): {
+                "Dataset name": g.api.dataset.get_info_by_id(dataset_id).name,
+                "Search images offset": start_number,
+                "Number of images": uploaded_images_number,
+                "License types": ", ".join(
+                    g.LICENSE_TYPES_BY_NUMBER[number] for number in license_type
+                ),
+            }
+        }
+    )
+
+    # Updating custom_data with the new data.
+    custom_data[g.CUSTOM_DATA_KEY][search_query] = search_query_dict
+    g.api.project.update_custom_data(project_id, dict(custom_data))
+
+    # Delete the temporary directory with images.
+    rmtree(g.SLY_APP_DATA_DIR, ignore_errors=True)
 
     show_result_message(uploaded_images_number)
 
@@ -532,7 +550,7 @@ def show_result_message(uploaded_images_number: Optional[int] = 0, error: bool =
 
     # Show the result message and hide it after 3 seconds.
     result_message.show()
-    download_button.text = "Start download"
+    download_button.text = "Start upload"
 
 
 def create_project(project_name: Optional[str]) -> int:
@@ -569,8 +587,9 @@ def create_dataset(project_id: int, dataset_name: Optional[str]) -> int:
     """
     # If the name is not specified, use the search query as the name.
     if not dataset_name:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
         sly.logger.debug("Dataset name is not specified, using search query.")
-        dataset_name = f"Flickr images: {search_query}"
+        dataset_name = f"{now} Flickr search: {search_query}"
 
     dataset = g.api.dataset.create(
         project_id, dataset_name, change_name_if_conflict=True

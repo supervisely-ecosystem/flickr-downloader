@@ -15,7 +15,7 @@ import src.globals as g
 start_number_input = InputNumber(value=0, min=0, precision=0)
 start_number_field = Field(
     title="Starting image number to search",
-    description="From which image number to start the search.",
+    description="Offset for searching images (from which search result number to start).",
     content=start_number_input,
 )
 
@@ -89,4 +89,6 @@ card = Card(
         ],
         direction="vertical",
     ),
+    lock_message="Please, enter API key and check the connection to the Flickr API.",
 )
+card.lock()
