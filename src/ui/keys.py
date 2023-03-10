@@ -20,7 +20,7 @@ check_result = Text()
 check_result.hide()
 
 card = Card(
-    "Flickr API key",
+    "1️⃣ Flickr API key",
     "Please, enter your Flickr API key.",
     content=Container(
         widgets=[key_input, check_key_button, file_loaded_info, check_result],

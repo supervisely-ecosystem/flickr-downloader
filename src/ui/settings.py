@@ -2,7 +2,6 @@ from supervisely.app.widgets import (
     Checkbox,
     Container,
     Card,
-    Select,
     Text,
     RadioGroup,
     Field,
@@ -62,33 +61,71 @@ metadata_field = Field(
     ),
 )
 
-# Generate license type selector.
-license_items = []
-for key, value in g.LICENSE_TYPES.items():
-    license_items.append(Select.Item(value=value, label=key))
-select_license = Select(items=license_items, multiple=True)
+# Field for choosing number of images to find.
+images_number_input = InputNumber(value=1, min=1, precision=0)
+images_number_field = Field(
+    title="Number of images",
+    description="How many images to find on Flickr.",
+    content=images_number_input,
+)
 
-license_message = Text(status="error", text="License type is not selected.")
-license_message.hide()
+# Inputs for changing default settings.
+batch_size_input = InputNumber(value=500, min=1, precision=0)
+max_workers_input = InputNumber(value=50, min=1, precision=0)
+batch_size_input.disable()
+max_workers_input.disable()
 
-# Field for choosing license type.
-select_license_field = Field(
-    title="Select license type",
-    description="At least one license must be selected.",
-    content=Container(widgets=[select_license, license_message], direction="vertical"),
+# Checkbox for unlocking default settings inputs.
+default_settings_checkbox = Checkbox(content="Use default settings", checked=True)
+
+# Text tooltips for default settings inputs.
+batch_size_text = Text("Batch size for uploading images:")
+max_workers_text = Text(
+    "Maximum number of workers for uploading image files in parallel:"
+)
+
+# Field for choosing upload settings.
+upload_settings_field = Field(
+    title="Upload settings",
+    description="Use the default settings or change them to your needs.",
+    content=Container(
+        widgets=[
+            default_settings_checkbox,
+            batch_size_text,
+            batch_size_input,
+            max_workers_text,
+            max_workers_input,
+        ],
+        direction="vertical",
+    ),
 )
 
 # Main card for all settings widgets.
 card = Card(
     content=Container(
         widgets=[
+            images_number_field,
             start_number_field,
-            upload_method_field,
             metadata_field,
-            select_license_field,
+            upload_method_field,
+            upload_settings_field,
         ],
         direction="vertical",
     ),
+    title="3️⃣ Search settings",
+    description="Additional settings for searching and downloading images.",
     lock_message="Please, enter API key and check the connection to the Flickr API.",
 )
 card.lock()
+
+
+@default_settings_checkbox.value_changed
+def unlock_settings(checked):
+    if checked:
+        batch_size_input.value = 500
+        max_workers_input.value = 50
+        batch_size_input.disable()
+        max_workers_input.disable()
+    else:
+        batch_size_input.enable()
+        max_workers_input.enable()

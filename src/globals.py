@@ -3,6 +3,7 @@ import os
 from typing import Optional
 
 import supervisely as sly
+
 from dotenv import load_dotenv
 
 load_dotenv("local.env")
@@ -16,11 +17,6 @@ WORKSPACE_ID = sly.io.env.workspace_id()
 SLY_APP_DATA_DIR = os.environ["SLY_APP_DATA_DIR"]
 IMAGES_TMP_DIR = "images"
 CUSTOM_DATA_KEY = "Flickr downloader"
-
-# The size of the batch of images to upload to the dataset.
-BATCH_SIZE = 10
-# The number of workers to download images.
-MAX_WORKERS = 5
 
 # Available license types for images: keys are text representations, values are codes in the Flickr API.
 LICENSE_TYPES = {
