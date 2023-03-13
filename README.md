@@ -1,7 +1,7 @@
 <div align="center" markdown>
 <img src="https://live.staticflickr.com/2893/9775672575_594e5968e9.jpg"/>
 
-# Download images from Flickr straight to a Supervisely dataset
+# Download images from Flickr
 
 <p align="center">
   <a href="#Overview">Overview</a> •
@@ -53,4 +53,4 @@ So, here are the steps to download images from Flickr:<br>
 PLACEHOLDER FOR SCREENSHOT WITH RESULT MESSAGES (project and dataset names, three result messages (downloaded, bad results, skipped))<br><br>
 After the upload is finished, you will see a message with the number of images that have been successfully uploaded to the dataset. The app will also show the number of duplicates that were skipped during the upload and the number of images that were unavailable for download. The app will also show the project and the dataset to which the images were uploaded. You can click on the links to open the project or the dataset.<br><br>
 
-**Note:** the app will also add information about the search query and the license types to the custom data of the project. The entries will be grouped by the `Flickr downloader` app name and the search query. The entries will also contain the date and time of the upload, the number of images, starting image number, license types, and the upload method. This information will be useful if you want to continue downloading images for the same (or similar) search query in this project or dataset.<br>
+**Note:** the app will also add information about the search query and the license types to the custom data of the project. The entries will be grouped by the `Flickr downloader` app name and the search query. The entries will also contain the date and time of the upload, the number of images, starting image number, license types, and the upload method. This information will be useful if you want to continue downloading images for the same (or similar) search query in this project or dataset.
