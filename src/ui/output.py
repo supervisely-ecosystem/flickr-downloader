@@ -378,8 +378,6 @@ def flickr_to_supervisely():
     batch_size = settings.batch_size_input.get_value()
     global max_workers
     max_workers = settings.max_workers_input.get_value()
-    print(f"Batch size: {batch_size}")
-    print(f"Max workers: {max_workers}")
 
     license_type = input.select_license.get_value()
     if not license_type:
