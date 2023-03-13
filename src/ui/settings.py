@@ -1,3 +1,4 @@
+import os
 from supervisely.app.widgets import (
     Checkbox,
     Container,
@@ -71,7 +72,7 @@ images_number_field = Field(
 
 # Inputs for changing default settings.
 batch_size_input = InputNumber(value=500, min=1, precision=0)
-max_workers_input = InputNumber(value=50, min=1, precision=0)
+max_workers_input = InputNumber(value=os.cpu_count(), min=1, precision=0)
 batch_size_input.disable()
 max_workers_input.disable()
 
@@ -123,7 +124,7 @@ card.lock()
 def unlock_settings(checked):
     if checked:
         batch_size_input.value = 500
-        max_workers_input.value = 50
+        max_workers_input.value = os.cpu_count()
         batch_size_input.disable()
         max_workers_input.disable()
     else:

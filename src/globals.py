@@ -14,7 +14,7 @@ api: sly.Api = sly.Api.from_env()
 TEAM_ID = sly.io.env.team_id()
 WORKSPACE_ID = sly.io.env.workspace_id()
 
-SLY_APP_DATA_DIR = os.environ["SLY_APP_DATA_DIR"]
+SLY_APP_DATA_DIR = sly.app.get_data_dir()
 IMAGES_TMP_DIR = "images"
 CUSTOM_DATA_KEY = "Flickr downloader"
 
