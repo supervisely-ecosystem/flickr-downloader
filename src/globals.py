@@ -41,7 +41,6 @@ DOWNLOAD_TYPES = {
     "files": "Copy source file to the Supervisely dataset",
     "links": "Add link to source image in the Supervisely dataset",
 }
-# UNBUGGED_DOWNLOAD_TYPES = {v: k for k, v in DOWNLOAD_TYPES.items()}
 
 
 def key_from_file() -> Optional[str]:

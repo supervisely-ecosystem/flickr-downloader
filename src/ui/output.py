@@ -17,6 +17,7 @@ from supervisely.app.widgets import (
     Progress,
     Text,
     DatasetThumbnail,
+    Flexbox,
 )
 
 import src.globals as g
@@ -28,7 +29,7 @@ download_button = Button(text="Start upload")
 cancel_button = Button(text="Cancel upload", button_type="danger")
 cancel_button.hide()
 # Bottom container for buttons.
-buttons = Container(widgets=[download_button, cancel_button], direction="horizontal")
+buttons = Flexbox(widgets=[download_button, cancel_button])
 
 progress = Progress()
 progress.hide()
