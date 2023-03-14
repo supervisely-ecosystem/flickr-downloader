@@ -26,18 +26,21 @@ import src.ui.settings as settings
 
 download_button = Button(text="Start upload")
 cancel_button = Button(text="Cancel upload", button_type="danger")
-
 cancel_button.hide()
+# Bottom container for buttons.
+buttons = Container(widgets=[download_button, cancel_button], direction="horizontal")
 
 progress = Progress()
 progress.hide()
 
+# Message for showing upload results.
 result_message = Text()
 result_message.hide()
-
+# Message for showing number of outfiltered images.
 filtered_message = Text(status="info")
-duplicates_message = Text(status="warning")
 filtered_message.hide()
+# Message for showing number of duplicate images in dataset that were skipped.
+duplicates_message = Text(status="warning")
 duplicates_message.hide()
 
 destination = DestinationProject(g.WORKSPACE_ID, project_type="images")
@@ -53,8 +56,7 @@ card = Card(
         widgets=[
             destination,
             progress,
-            download_button,
-            cancel_button,
+            buttons,
             result_message,
             filtered_message,
             duplicates_message,
@@ -413,6 +415,9 @@ def flickr_to_supervisely():
 
     start_number = settings.start_number_input.get_value()
 
+    upload_method = settings.upload_method_radio.get_value()
+    # WARNING! Requries changes in the SDK template due to bug with label.
+
     # Reading global constant for required metadata fields.
     metadata = [
         key
@@ -427,23 +432,24 @@ def flickr_to_supervisely():
             if settings.checkboxes[key].is_checked()
         ]
     )
-    sly.logger.debug(
-        f"Started with the following parameters: Search query: {search_query}; Start number: {start_number};"
-        f"Images number: {images_number}; License types: {license_type}; Metadata: {metadata};"
-    )
 
     # Get the lists of names, links and metadata for the search results.
     names, links, metas = images_from_flicker(
         search_query, images_number, license_type, metadata, start_number
     )
 
-    upload_method = settings.upload_method_radio.get_value()
-
     # Check if there are any images found for the query.
     if not (names and links and metas):  # Move to function?
         # If there are no images, show the error message.
         show_result_message(error=True)
         return
+
+    sly.logger.debug(
+        f"Started with the following parameters: Search query: {search_query}; Start number: {start_number}; "
+        f"Images number: {images_number}; Starting image number: {start_number}; "
+        f"License types: {license_type}; Metadata: {metadata}; Upload method: {upload_method}; "
+        f"Batch size: {batch_size}; Max workers: {max_workers}."
+    )
 
     # Test time of the upload function, delete in production.
     before_upload_time = perf_counter()

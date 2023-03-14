@@ -19,13 +19,19 @@ start_number_field = Field(
     content=start_number_input,
 )
 
-# Field for choosing the method of downloading images.
 upload_method_radio = RadioGroup(
-    items=[RadioGroup.Item(value=value) for value in g.DOWNLOAD_TYPES]
+    items=[
+        RadioGroup.Item(value=method, label=description)
+        for method, description in g.DOWNLOAD_TYPES.items()
+    ],
+    direction="vertical",
 )
+upload_method_radio.set_value(value="files")
+
+# Field for choosing the method of downloading images.
 upload_method_field = Field(
     title="Choose the download method",
-    description="Download links is faster, but it may cause data loss if the source file will be deleted.",
+    description="Add only links is faster, but it may cause data loss if the source file will be deleted.",
     content=upload_method_radio,
 )
 
@@ -50,6 +56,8 @@ disabled_chekboxes_container = Container(
 checkboxes = {}
 for field in g.OPTIONAL_METADATA_FIELDS:
     checkboxes[field] = Checkbox(content=f"Image {field}")
+for checkbox in checkboxes.values():
+    checkbox.check()
 checkboxes_container = Container(widgets=checkboxes.values(), direction="vertical")
 
 # Field for choosing image metadata fields to add.

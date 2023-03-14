@@ -4,12 +4,9 @@ import src.ui.keys as keys
 import src.globals as g
 
 search_query_input = Input(minlength=1, placeholder="Enter the search query")
+
 query_message = Text(status="error", text="Please, enter the search query.")
 query_message.hide()
-
-search_button = Button("Check number of images")
-search_results = Text(status="info")
-search_results.hide()
 
 # Generate license type selector.
 license_items = []
@@ -27,6 +24,10 @@ license_field = Field(
     content=Container(widgets=[select_license, license_message], direction="vertical"),
 )
 
+search_button = Button("Check number of images")
+
+search_results = Text(status="info")
+search_results.hide()
 
 # Main card for all input widgets.
 card = Card(

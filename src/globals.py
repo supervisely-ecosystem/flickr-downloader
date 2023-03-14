@@ -37,7 +37,11 @@ MEDIA_TYPE = "photos"
 REQUIRED_METADATA_FIELDS = ["owner", "license"]
 OPTIONAL_METADATA_FIELDS = ["id", "title", "description"]
 # Download types for images.
-DOWNLOAD_TYPES = ["links", "files"]
+DOWNLOAD_TYPES = {
+    "files": "Copy source file to the Supervisely dataset",
+    "links": "Add link to source image in the Supervisely dataset",
+}
+# UNBUGGED_DOWNLOAD_TYPES = {v: k for k, v in DOWNLOAD_TYPES.items()}
 
 
 def key_from_file() -> Optional[str]:

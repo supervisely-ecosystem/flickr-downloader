@@ -10,15 +10,20 @@ import src.globals as g
 
 
 key_input = Input(type="password")
+
+check_key_button = Button("Check connection")
+
+# Message which is shown if the API key was loaded from the team files.
 file_loaded_info = Text(
     text="The API key was loaded from the team files.", status="info"
 )
 file_loaded_info.hide()
 
-check_key_button = Button("Check connection")
+# Message which is shown after the connection check.
 check_result = Text()
 check_result.hide()
 
+# Main card with all keys widgets.
 card = Card(
     "1️⃣ Flickr API key",
     "Please, enter your Flickr API key.",

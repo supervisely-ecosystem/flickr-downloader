@@ -1,7 +1,8 @@
 {
   "name": "Flickr downloader",
   "type": "app",
-  "release": { "version":"v1.0.0", "name":"init" },
+  "version": "2.0.0",
+  "release": { "version":"v1.0.3", "name":"init" },
   "slug": "iwatkot/flickr_downloader",
   "categories": ["import", "images"],
   "description": "Downloads images from the Flickr to the dataset.",
