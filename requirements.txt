@@ -1,4 +1,4 @@
-git+https://github.com/supervisely/supervisely.git@radio_group_label_fix
+supervisely==6.70.7
 # Library for Flickr API.
 flickr-api==0.7.7
 
