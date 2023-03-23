@@ -76,6 +76,8 @@ def images_from_flicker(
     license_type: List[int],
     metadata: List[str],
     start_number: int,
+    search_type: str,
+    tag_type: str,
 ) -> Tuple[List[str], List[str], List[Dict[str, str]]]:
     """Searches for specified number of images on Flickr using the specified search query
     and returns the list of image names, links and metadata with specified fields.
@@ -131,22 +133,38 @@ def images_from_flicker(
 
     for page_number in range(start_page_number, len(pages) + 1):
         images_per_page = pages[page_number]
+
+        license = ",".join([str(i) for i in license_type])
+
         sly.logger.debug(
-            f"Page number: {page_number}. Images per page: {images_per_page}."
+            f"Trying to get {images_per_page} images from page {page_number}. "
+            f"Search query: {search_query}. License: {license}."
         )
+
+        kwargs = {
+            search_type: search_query,
+            "sort": g.SORT_TYPE,
+            "content_type": g.CONTENT_TYPE,
+            "license": license,
+            "per_page": images_per_page,
+            "page": page_number,
+            "extras": ",".join(metadata),
+        }
+
+        if search_type == "tags":
+            kwargs["tag_mode"] = tag_type
 
         # Variable to measure the time of Flickr API response.
         init_call_time = perf_counter()
-        images_on_page = keys.flickr_api.Photo.search(
-            text=search_query,
-            sort=g.SORT_TYPE,
-            content_type=g.CONTENT_TYPE,
-            media=g.MEDIA_TYPE,
-            per_page=images_per_page,
-            license=",".join([str(i) for i in license_type]),
-            page=page_number,
-            extras=",".join(metadata),
+        images_on_page = keys.flickr_api.Photo.search(**kwargs)
+
+        kwargs.clear()
+
+        sly.logger.debug(
+            f"Flickr API returned {len(images_on_page)} images on page {page_number}. "
+            f"Flickr API responding that the total number of images is {images_on_page.info.total}."
         )
+
         # Logging the time of Flickr API response.
         end_call_time = perf_counter()
         flickr_search_time = end_call_time - init_call_time
@@ -165,17 +183,30 @@ def images_from_flicker(
 
         # Iterate over the list of images on the current page.
         for image in images_on_page:
+
+            print(image.getInfo())
+
             image_as_dict = image.__dict__
             # Extract the link to the original image.
             link = image_as_dict.get("url_o")
             # Checking if the link is correct and the image is not a duplicate in search results.
-            if not link or not link.endswith(".jpg") or link in links:
+            if not link:
+                f"Image with id {image_as_dict.get('id')} is skipped due to no link."
                 filtered_images += 1
-                sly.logger.debug(
-                    f"Image with id {image_as_dict.get('id')} is skipped due "
-                    f"to no link, wrong extension or as duplicate."
-                )
                 continue
+            elif not link.lower().endswith(tuple(g.ALLOWED_IMAGE_FORMATS)):
+                sly.logger.debug(
+                    f"The image with link {link} is skipped due to wrong extension."
+                )
+                filtered_images += 1
+                continue
+            elif link in links:
+                sly.logger.debug(
+                    f"The image with link {link} is skipped due to duplicate."
+                )
+                filtered_images += 1
+                continue
+
             # Extract the name of the image from the link
             name = os.path.basename(link)
             # Check if the image already exists in the dataset if adding images to an existing dataset.
@@ -417,7 +448,11 @@ def flickr_to_supervisely():
     start_number = settings.start_number_input.get_value()
 
     upload_method = settings.upload_method_radio.get_value()
-    # WARNING! Requries changes in the SDK template due to bug with label.
+
+    # Getting the search type (text or tags) and tag type (all or any) from input selectors.
+    search_type = input.search_type_select.get_value()
+
+    tag_type = input.tags_type_select.get_value()
 
     # Reading global constant for required metadata fields.
     metadata = [
@@ -436,7 +471,13 @@ def flickr_to_supervisely():
 
     # Get the lists of names, links and metadata for the search results.
     names, links, metas = images_from_flicker(
-        search_query, images_number, license_type, metadata, start_number
+        search_query,
+        images_number,
+        license_type,
+        metadata,
+        start_number,
+        search_type,
+        tag_type,
     )
 
     # Check if there are any images found for the query.
@@ -447,6 +488,7 @@ def flickr_to_supervisely():
 
     sly.logger.debug(
         f"Started with the following parameters: Search query: {search_query}; Start number: {start_number}; "
+        f"Search type: {search_type}; Tag type: {tag_type};"
         f"Images number: {images_number}; Starting image number: {start_number}; "
         f"License types: {license_type}; Metadata: {metadata}; Upload method: {upload_method}; "
         f"Batch size: {batch_size}; Max workers: {max_workers}."

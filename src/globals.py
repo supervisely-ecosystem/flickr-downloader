@@ -23,6 +23,7 @@ LICENSE_TYPES = {
     "CC BY-SA": 1,
     "CC BY-NC": 2,
     "CC BY: Attribution": 4,
+    "NKCR": 7,
     "CC0": 9,
     "PDM": 10,
 }
@@ -31,9 +32,12 @@ LICENSE_TYPES_BY_NUMBER = {v: k for k, v in LICENSE_TYPES.items()}
 
 # Settings for images search and metadata fields.
 IMAGES_PER_PAGE = 500
+
+SEARCH_TYPES = ["text", "tags"]
+TAGS_TYPES = ["any", "all"]
+
 SORT_TYPE = "relevance"
 CONTENT_TYPE = 1
-MEDIA_TYPE = "photos"
 REQUIRED_METADATA_FIELDS = ["owner", "license"]
 OPTIONAL_METADATA_FIELDS = ["id", "title", "description"]
 # Download types for images.
@@ -41,6 +45,7 @@ DOWNLOAD_TYPES = {
     "files": "Copy source file to the Supervisely dataset",
     "links": "Add link to source image in the Supervisely dataset",
 }
+ALLOWED_IMAGE_FORMATS = [".jpg", ".jpeg", ".png"]
 
 
 def key_from_file() -> Optional[str]:
