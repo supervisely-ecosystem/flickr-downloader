@@ -1,5 +1,5 @@
 <div align="center" markdown>
-<img src="https://live.staticflickr.com/2893/9775672575_594e5968e9.jpg"/>
+<img src="https://user-images.githubusercontent.com/119248312/227563661-e47a3d56-e13f-441e-a46a-9bf818ac086b.jpg"/>
 
 # Download images from Flickr
 
