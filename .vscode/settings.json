@@ -1,5 +1,5 @@
 {
-  "python.defaultInterpreterPath": ".venv/bin/python",
+  "python.defaultInterpreterPath": "/home/iwatkot/Coding/Supervisely/all_venvs/flickr-downloader/bin/python",
   "files.exclude": {
     "**/__pycache__": true,
     ".venv": true

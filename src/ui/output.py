@@ -184,8 +184,6 @@ def images_from_flicker(
         # Iterate over the list of images on the current page.
         for image in images_on_page:
 
-            print(image.getInfo())
-
             image_as_dict = image.__dict__
             # Extract the link to the original image.
             link = image_as_dict.get("url_o")
