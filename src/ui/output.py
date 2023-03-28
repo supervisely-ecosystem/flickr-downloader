@@ -156,7 +156,17 @@ def images_from_flicker(
 
         # Variable to measure the time of Flickr API response.
         init_call_time = perf_counter()
-        images_on_page = keys.flickr_api.Photo.search(**kwargs)
+        try:
+            images_on_page = keys.flickr_api.Photo.search(**kwargs)
+        except Exception as error:
+            sly.logger.error(f"There was an error, while calling Flickr API: {error}.")
+            sly.app.show_dialog(
+                "Flickr API not respoding",
+                "There was an error, while calling Flickr API. Total number of images can "
+                "be less than specified or it may be no images at all. Please, try again later.",
+                status="error",
+            )
+            continue
 
         kwargs.clear()
 
