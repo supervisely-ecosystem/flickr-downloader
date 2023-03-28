@@ -9,11 +9,11 @@
   <a href="#How-To-Run">How To Run</a>
 </p>
 
-placeholder for ecosystem badge
+[![](https://img.shields.io/badge/supervisely-ecosystem-brightgreen)](https://ecosystem.supervise.ly/apps/supervisely-ecosystem/flickr-downloader)
 [![](https://img.shields.io/badge/slack-chat-green.svg?logo=slack)](https://supervise.ly/slack)
-placeholder for release badge
-placeholder for views badge
-placeholder for runs badge
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/supervisely-ecosystem/flickr-downloader)
+[![views](https://app.supervise.ly/img/badges/views/supervisely-ecosystem/flickr-downloader.png)](https://supervise.ly)
+[![runs](https://app.supervise.ly/img/badges/runs/supervisely-ecosystem/flickr-downloader.png)](https://supervise.ly)
 
 </div>
 
