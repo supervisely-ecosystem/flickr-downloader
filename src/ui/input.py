@@ -8,8 +8,6 @@ from supervisely.app.widgets import (
     Field,
     Button,
     Select,
-    Switch,
-    Flexbox,
 )
 
 import src.ui.keys as keys
