@@ -1,4 +1,4 @@
-supervisely==6.70.7
+supervisely==6.70.13
 # Library for Flickr API.
 flickr-api==0.7.7
 
