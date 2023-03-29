@@ -93,21 +93,21 @@ def images_from_flicker(
         tuple[List[str], List[str], List[Dict[str, str]]]: returns the list of image names,
         links and metadata for using in the upload_links() function
     """
-    # Calculate the number of pages and images on the last page according to
-    # the number of images to search and start number.
+    # Calculate the number of start and end pages and it's offsets.
     total_images_number = images_number + start_number
+
     start_page_number = start_number // g.IMAGES_PER_PAGE + 1
     start_offset_number = start_number % g.IMAGES_PER_PAGE
 
-    # Create a dictionary with the number of images per page.
-    full_pages_number = total_images_number // g.IMAGES_PER_PAGE
-    pages = {i: g.IMAGES_PER_PAGE for i in range(1, full_pages_number + 1)}
-    last_page_images_number = total_images_number % g.IMAGES_PER_PAGE
-    if last_page_images_number:
-        pages[full_pages_number + 1] = last_page_images_number
+    end_page_number = total_images_number // g.IMAGES_PER_PAGE + 1
+    end_offset_number = (
+        images_number - (g.IMAGES_PER_PAGE - start_offset_number)
+    ) % g.IMAGES_PER_PAGE
 
     sly.logger.debug(
-        f"Paging: {pages}, start page: {start_page_number}, start offset: {start_offset_number}."
+        f"Total images number (with offset): {total_images_number}. "
+        f"Start page: {start_page_number}, start offset: {start_offset_number}. "
+        f"End page: {end_page_number}, end offset: {end_offset_number}."
     )
     # Check if adding images to an existing dataset.
     global dataset_id
@@ -131,13 +131,11 @@ def images_from_flicker(
     global full_flickr_search_time
     full_flickr_search_time = 0
 
-    for page_number in range(start_page_number, len(pages) + 1):
-        images_per_page = pages[page_number]
-
+    for page_number in range(start_page_number, end_page_number + 1):
         license = ",".join([str(i) for i in license_type])
 
         sly.logger.debug(
-            f"Trying to get {images_per_page} images from page {page_number}. "
+            f"Trying to get {g.IMAGES_PER_PAGE} images from page {page_number}. "
             f"Search query: {search_query}. License: {license}."
         )
 
@@ -146,7 +144,7 @@ def images_from_flicker(
             "sort": g.SORT_TYPE,
             "content_type": g.CONTENT_TYPE,
             "license": license,
-            "per_page": images_per_page,
+            "per_page": g.IMAGES_PER_PAGE,
             "page": page_number,
             "extras": ",".join(metadata),
         }
@@ -180,7 +178,7 @@ def images_from_flicker(
         flickr_search_time = end_call_time - init_call_time
         full_flickr_search_time += flickr_search_time
         sly.logger.debug(
-            f"Time of Flickr API response: {flickr_search_time} for {images_per_page} images."
+            f"Time of Flickr API response: {flickr_search_time} for {g.IMAGES_PER_PAGE} images."
         )
 
         if page_number == start_page_number:
@@ -190,6 +188,14 @@ def images_from_flicker(
                 f"list of images with {start_offset_number} offset."
             )
             images_on_page = images_on_page[start_offset_number:]
+
+        if page_number == end_page_number:
+            # Slice the list of images on the last page according to the end offset.
+            sly.logger.debug(
+                f"Page number {page_number} is equal to end page number {end_page_number}. Slicing the result "
+                f"list of images with {end_offset_number} offset."
+            )
+            images_on_page = images_on_page[:end_offset_number]
 
         # Iterate over the list of images on the current page.
         for image in images_on_page:
