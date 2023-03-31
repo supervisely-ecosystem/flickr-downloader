@@ -44,8 +44,8 @@ owner_info_note = Text(
 
 # Generate blocked checkboxes for required metadata fields.
 disabled_chekboxes = {}
-for field in g.REQUIRED_METADATA_FIELDS:
-    disabled_chekboxes[field] = Checkbox(content=f"Image {field}", checked=True)
+for key, value in g.REQUIRED_METADATA_FIELDS.items():
+    disabled_chekboxes[value] = Checkbox(content=key, checked=True)
 for checkbox in disabled_chekboxes.values():
     checkbox.disable()
 disabled_chekboxes_container = Container(
@@ -54,8 +54,8 @@ disabled_chekboxes_container = Container(
 
 # Generate checkboxes for optional metadata fields.
 checkboxes = {}
-for field in g.OPTIONAL_METADATA_FIELDS:
-    checkboxes[field] = Checkbox(content=f"Image {field}")
+for key, value in g.OPTIONAL_METADATA_FIELDS.items():
+    checkboxes[value] = Checkbox(content=key)
 for checkbox in checkboxes.values():
     checkbox.check()
 checkboxes_container = Container(widgets=checkboxes.values(), direction="vertical")

@@ -139,25 +139,29 @@ def images_from_flicker(
             f"Search query: {search_query}. License: {license}."
         )
 
-        kwargs = {
-            search_type: search_query,
-            "sort": g.SORT_TYPE,
-            "content_type": g.CONTENT_TYPE,
-            "license": license,
-            "per_page": g.IMAGES_PER_PAGE,
-            "page": page_number,
-            "extras": ",".join(metadata),
-        }
+        params = g.PARAMS.copy()
+
+        params.update(
+            {
+                "api_key": keys.flickr_api_key,
+                search_type: search_query,
+                "license": license,
+                "per_page": g.IMAGES_PER_PAGE,
+                "page": page_number,
+                "extras": ",".join(metadata) + ",url_o",
+            }
+        )
 
         if search_type == "tags":
-            kwargs["tag_mode"] = tag_type
+            params["tag_mode"] = tag_type
 
         # Variable to measure the time of Flickr API response.
         init_call_time = perf_counter()
-        try:
-            images_on_page = keys.flickr_api.Photo.search(**kwargs)
-        except Exception as error:
-            sly.logger.error(f"There was an error, while calling Flickr API: {error}.")
+
+        response = requests.get(g.FLICKR_API_URL, params=params)
+
+        if response.status_code != 200 or response.json().get("stat") != "ok":
+            sly.logger.error("There was an error, while calling Flickr API.")
             sly.app.show_dialog(
                 "Flickr API not respoding",
                 "There was an error, while calling Flickr API. Total number of images can "
@@ -166,11 +170,14 @@ def images_from_flicker(
             )
             continue
 
-        kwargs.clear()
+        params.clear()
+
+        images_on_page = response.json().get("photos").get("photo")
+        images_all_pages = response.json().get("photos").get("total")
 
         sly.logger.debug(
             f"Flickr API returned {len(images_on_page)} images on page {page_number}. "
-            f"Flickr API responding that the total number of images is {images_on_page.info.total}."
+            f"Flickr API responding that the total number of images is {images_all_pages}."
         )
 
         # Logging the time of Flickr API response.
@@ -199,13 +206,11 @@ def images_from_flicker(
 
         # Iterate over the list of images on the current page.
         for image in images_on_page:
-
-            image_as_dict = image.__dict__
             # Extract the link to the original image.
-            link = image_as_dict.get("url_o")
+            link = image.get("url_o")
             # Checking if the link is correct and the image is not a duplicate in search results.
             if not link:
-                f"Image with id {image_as_dict.get('id')} is skipped due to no link."
+                f"Image with id {image.get('id')} is skipped due to no link."
                 filtered_images += 1
                 continue
             elif not link.lower().endswith(tuple(g.ALLOWED_IMAGE_FORMATS)):
@@ -233,7 +238,7 @@ def images_from_flicker(
 
             names.append(name)
             links.append(link)
-            metas.append(get_image_metadata(image_as_dict, metadata))
+            metas.append(get_image_metadata(image, metadata))
 
     sly.logger.debug(
         f"Flickr API returned {len(names) +  filtered_images + existed_duplicates} images for "
@@ -379,9 +384,7 @@ def upload_images_to_dataset(
         return len(uploaded_images)
 
 
-def get_image_metadata(
-    image_as_dict: Dict[str, str], metadata: List[str]
-) -> Dict[str, str]:
+def get_image_metadata(image: Dict[str, str], metadata: List[str]) -> Dict[str, str]:
     """Returns the dictionary with the specified metadata fields for the image.
 
     Args:
@@ -392,21 +395,33 @@ def get_image_metadata(
         Dict[str, str]: dictionary with the specified metadata fields for the
         image to use with upload_links() function
     """
-    image_metadata = {"Flickr image URL": image_as_dict.get("url_o")}
+    try:
+        metadata.remove("source_url")
+    except ValueError:
+        pass
+
+    image_metadata = {
+        "Source URL": g.FLICKR_SOURCE_URL.format(
+            owner=image.get("owner"), id=image.get("id")
+        )
+    }
 
     for key in metadata:
-        if key == "owner":
-            # Unpacking the owner object to get the owner id.
-            owner = image_as_dict.get(key).__dict__
-            image_metadata["Flickr owner id"] = owner.get("id")
-        elif key == "license":
+        try:
+            field_key = g.REQUIRED_METADATA_FIELDS_BY_KEY[key]
+        except KeyError:
+            field_key = g.OPTIONAL_METADATA_FIELDS_BY_KEY[key]
+
+        if key == "license":
             # Retrieving the license text by its number.
-            license_number = int(image_as_dict.get(key))
-            image_metadata[key] = g.LICENSE_TYPES_BY_NUMBER[license_number]
-        elif key == "id":
-            image_metadata["Flickr image ID"] = image_as_dict.get(key)
+            license_number = int(image.get(key))
+            image_metadata[field_key] = g.LICENSE_TYPES_BY_NUMBER[license_number]
+        elif key == "owner_name":
+            image_metadata[field_key] = image.get("ownername")
+        elif key == "description":
+            image_metadata[field_key] = image.get(key).get("_content")
         else:
-            image_metadata[key.title()] = image_as_dict.get(key)
+            image_metadata[field_key] = image.get(key)
 
     return image_metadata
 

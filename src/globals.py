@@ -18,6 +18,17 @@ SLY_APP_DATA_DIR = sly.app.get_data_dir()
 IMAGES_TMP_DIR = "images"
 CUSTOM_DATA_KEY = "Flickr downloader"
 
+FLICKR_API_URL = "https://www.flickr.com/services/rest/"
+FLICKR_SOURCE_URL = "https://www.flickr.com/photos/{owner}/{id}"
+
+PARAMS = {
+    "method": "flickr.photos.search",
+    "sort": "relevance",
+    "content_type": 1,
+    "format": "json",
+    "nojsoncallback": 1,
+}
+
 # Available license types for images: keys are text representations, values are codes in the Flickr API.
 LICENSE_TYPES = {
     "CC BY-SA": 1,
@@ -36,10 +47,19 @@ IMAGES_PER_PAGE = 500
 SEARCH_TYPES = ["text", "tags"]
 TAGS_TYPES = ["any", "all"]
 
-SORT_TYPE = "relevance"
-CONTENT_TYPE = 1
-REQUIRED_METADATA_FIELDS = ["owner", "license"]
-OPTIONAL_METADATA_FIELDS = ["id", "title", "description"]
+REQUIRED_METADATA_FIELDS = {
+    "Photographer name": "owner_name",
+    "Source URL": "source_url",
+    "License": "license",
+}
+REQUIRED_METADATA_FIELDS_BY_KEY = {v: k for k, v in REQUIRED_METADATA_FIELDS.items()}
+
+OPTIONAL_METADATA_FIELDS = {
+    "Image title": "title",
+    "Image description": "description",
+}
+OPTIONAL_METADATA_FIELDS_BY_KEY = {v: k for k, v in OPTIONAL_METADATA_FIELDS.items()}
+
 # Download types for images.
 DOWNLOAD_TYPES = {
     "files": "Copy source file to the Supervisely dataset",

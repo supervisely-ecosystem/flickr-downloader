@@ -1,3 +1,5 @@
+import requests
+
 import supervisely as sly
 
 from supervisely.app.widgets import (
@@ -115,25 +117,37 @@ def get_number_of_results():
         search_type = search_type_select.get_value()
         tag_type = tags_type_select.get_value()
 
-        sly.logger.debug(f"Read search type: {search_type} and tag type: {tag_type}.")
+        params = g.PARAMS.copy()
 
-        kwargs = {
-            search_type: search_query,
-            "content_type": g.CONTENT_TYPE,
-            "license": license,
-            "per_page": 1,
-            "page": 1,
-        }
+        params.update(
+            {
+                "api_key": keys.flickr_api_key,
+                search_type: search_query,
+                "license": license,
+                "per_page": 1,
+                "page": 1,
+            }
+        )
 
         if search_type == "tags":
-            kwargs["tag_mode"] = tag_type
+            params["tag_mode"] = tag_type
 
-        response = keys.flickr_api.Photo.search(**kwargs)
+        response = requests.get(g.FLICKR_API_URL, params=params)
 
-        number_of_results = response.info.total
+        if response.status_code != 200 or response.json().get("stat") != "ok":
+            sly.logger.error(
+                f"Error while getting the number of images: {response.text}"
+            )
+            search_results.text = "Error while getting the number of images."
+            search_results.status = "error"
+            search_results.show()
+            return
+
+        number_of_results = response.json().get("photos").get("total")
 
         sly.logger.debug(
-            f"Response: {response}. Number of images: {number_of_results}."
+            f"Search type: {search_type}, tag type: {tag_type}, search query: {search_query}, "
+            f"license: {license}. Number of images found: {number_of_results}."
         )
 
         search_results.text = f"Number of images found: {number_of_results}."

@@ -1,4 +1,4 @@
-import flickr_api
+import requests
 import supervisely as sly
 
 from supervisely.app.widgets import Input, Card, Button, Container, Text
@@ -43,18 +43,24 @@ def connect_to_flickr():
     if not flickr_api_key:
         flickr_api_key = key_input.get_value()
 
-    # API secret is not required for, so using a placeholder.
-    flickr_api.set_keys(flickr_api_key, "placeholder")
+    params = g.PARAMS.copy()
+    params.update(
+        {
+            "api_key": flickr_api_key,
+            "text": "test query",
+        }
+    )
 
-    try:
-        # Checking the connection to the Flickr API with specified API key.
-        flickr_api.test.echo()
+    response = requests.get(g.FLICKR_API_URL, params=params)
+
+    if response.status_code == 200 and response.json().get("stat") == "ok":
+        # If API returned 200 status code, the connection was successful and the API key is valid.
         sly.logger.info("The connection to the Flickr API was successful.")
-    except Exception as error:
+    else:
         # Resetting the global API key if the connection failed.
         flickr_api_key = None
         sly.logger.warning(
-            f"The connection to the Flickr API failed with error: {error}."
+            f"The connection to the Flickr API failed. Response: {response.text}."
         )
         check_result.text = "The connection to the Flickr API failed, check the key."
         check_result.status = "error"
