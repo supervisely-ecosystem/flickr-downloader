@@ -188,7 +188,15 @@ def images_from_flicker(
             f"Time of Flickr API response: {flickr_search_time} for {g.IMAGES_PER_PAGE} images."
         )
 
-        if page_number == start_page_number:
+        if page_number == start_page_number == end_page_number:
+            sly.logger.debug(
+                f"Page number {page_number} is equal to start page number {start_page_number} "
+                f"and end page number {end_page_number}. Slicing the result list of images "
+                f"with {start_offset_number} and {end_offset_number} offsets."
+            )
+            images_on_page = images_on_page[start_offset_number:end_offset_number]
+
+        elif page_number == start_page_number:
             # Slice the list of images on the first page according to the start offset.
             sly.logger.debug(
                 f"Page number {page_number} is equal to start page number {start_page_number}. Slicing the result "
@@ -196,7 +204,7 @@ def images_from_flicker(
             )
             images_on_page = images_on_page[start_offset_number:]
 
-        if page_number == end_page_number:
+        elif page_number == end_page_number:
             # Slice the list of images on the last page according to the end offset.
             sly.logger.debug(
                 f"Page number {page_number} is equal to end page number {end_page_number}. Slicing the result "
