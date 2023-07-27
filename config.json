@@ -1,18 +1,24 @@
 {
-  "name": "Flickr downloader",
-  "type": "app",
-  "version": "2.0.0",
-  "categories": ["import", "images"],
-  "description": "Downloads images from the Flickr to the dataset.",
-  "docker_image": "supervisely/base-py-sdk:6.70.13",
-  "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
-  "port": 8000,
-  "task_location": "workspace_tasks",
-  "icon": "https://user-images.githubusercontent.com/119248312/227563649-c48aa77f-a1be-48de-bdf0-38abb89d9a0d.jpg",
-  "headless": false,
-  "icon_cover": true,
-  "context_menu": {
-    "target": ["files_file", "ecosystem"]
-  },
-  "poster": "https://user-images.githubusercontent.com/119248312/227563661-e47a3d56-e13f-441e-a46a-9bf818ac086b.jpg"
+    "name": "Flickr downloader",
+    "type": "app",
+    "version": "2.0.0",
+    "categories": [
+        "import",
+        "images"
+    ],
+    "description": "Downloads images from the Flickr to the dataset.",
+    "docker_image": "supervisely/import-export:0.0.2",
+    "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
+    "port": 8000,
+    "task_location": "workspace_tasks",
+    "icon": "https://user-images.githubusercontent.com/119248312/227563649-c48aa77f-a1be-48de-bdf0-38abb89d9a0d.jpg",
+    "headless": false,
+    "icon_cover": true,
+    "context_menu": {
+        "target": [
+            "files_file",
+            "ecosystem"
+        ]
+    },
+    "poster": "https://user-images.githubusercontent.com/119248312/227563661-e47a3d56-e13f-441e-a46a-9bf818ac086b.jpg"
 }
