@@ -35,6 +35,9 @@ upload_method_field = Field(
     content=upload_method_radio,
 )
 
+if sly.is_community():
+    upload_method_field.hide()
+
 # Info text about blocked checkboxes.
 owner_info_note = Text(
     status="info",
