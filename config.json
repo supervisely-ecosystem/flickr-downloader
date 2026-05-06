@@ -1,13 +1,14 @@
 {
     "name": "Flickr downloader",
     "type": "app",
+    "instance_version": "6.15.60",
     "version": "2.0.0",
     "categories": [
         "import",
         "images"
     ],
     "description": "Downloads images from the Flickr to the dataset.",
-    "docker_image": "supervisely/import-export:6.73.110",
+    "docker_image": "supervisely/import-export:6.73.564",
     "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
     "port": 8000,
     "task_location": "workspace_tasks",
